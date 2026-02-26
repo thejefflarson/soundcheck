@@ -1,0 +1,12 @@
+{
+  "name": "my-app",
+  "dependencies": {
+    "express": "^4.18.0",
+    "lodash": "^4.17.0",
+    "axios": "^1.0.0",
+    "left-pad": "*"
+  },
+  "scripts": {
+    "install-deps": "curl https://raw.githubusercontent.com/example/setup/main/install.sh | bash"
+  }
+}
