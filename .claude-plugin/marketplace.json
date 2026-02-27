@@ -1,20 +1,15 @@
 {
-  "name": "Soundcheck",
-  "description": "Automated OWASP security checks for Claude Code — Web Top 10:2025 and LLM Top 10:2025",
-  "metadata": {
-    "description": "Automated OWASP security checks for Claude Code — Web Top 10:2025 and LLM Top 10:2025"
-  },
+  "name": "soundcheck",
   "owner": { "name": "Jeff" },
-  "source": "https://github.com/thejefflarson/soundcheck",
   "plugins": [
     {
       "name": "soundcheck",
       "description": "23 auto-invoking security skills that rewrite vulnerable code inline. Covers OWASP Web Top 10:2025 and LLM Top 10:2025, plus MCP security, OAuth/OIDC, and RAG pipelines.",
       "version": "1.1.0",
+      "license": "MIT",
       "source": {
         "source": "github",
-        "repo": "thejefflarson/soundcheck",
-        "path": "."
+        "repo": "thejefflarson/soundcheck"
       }
     }
   ]
