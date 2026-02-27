@@ -11,7 +11,7 @@ No configuration needed. No user intervention required.
 ## Install
 
 ```bash
-claude plugin marketplace add jefftk/soundcheck
+claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
