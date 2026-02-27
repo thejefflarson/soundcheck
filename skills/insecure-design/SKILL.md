@@ -51,7 +51,6 @@ def login(username: str, password: str, ip: str) -> dict:
         return {"error": "Too many requests"}, 429
     if FAILED_ATTEMPTS[username] >= LOCKOUT_THRESHOLD:
         return {"error": "Account locked. Contact support."}, 403
-    # Constant-time response regardless of whether user exists
     user = db.get_user(username)
     valid = user and hmac.compare_digest(hash_password(password), user.password_hash)
     if not valid:

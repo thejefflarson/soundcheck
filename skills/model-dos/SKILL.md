@@ -35,45 +35,32 @@ from openai import OpenAI
 
 client = OpenAI()
 
-# --- Input guards ---
-MAX_INPUT_CHARS   = 8_000    # ~2 000 tokens at ~4 chars/token
-MAX_CONTEXT_TURNS = 10       # cap multi-turn history
-MAX_OUTPUT_TOKENS = 512      # always set; never omit
+MAX_INPUT_CHARS   = 8_000
+MAX_CONTEXT_TURNS = 10
+MAX_OUTPUT_TOKENS = 512
 
-def validate_input(text: str) -> str:
-    if len(text) > MAX_INPUT_CHARS:
-        raise ValueError(f"Input exceeds {MAX_INPUT_CHARS} characters.")
-    return text.strip()
+_buckets: dict = defaultdict(lambda: (time.monotonic(), 10.0))
 
-def trim_history(messages: list[dict]) -> list[dict]:
-    """Keep system message + the last MAX_CONTEXT_TURNS user/assistant pairs."""
-    system = [m for m in messages if m["role"] == "system"]
-    rest   = [m for m in messages if m["role"] != "system"]
-    return system + rest[-(MAX_CONTEXT_TURNS * 2):]
-
-# --- Token bucket rate limiter ---
-_buckets: dict[str, tuple[float, float]] = defaultdict(lambda: (time.monotonic(), 10.0))
-
-def check_rate_limit(user_id: str, capacity: float = 10.0, refill_rate: float = 0.5) -> None:
+def check_rate_limit(user_id: str) -> None:
     last, tokens = _buckets[user_id]
     now = time.monotonic()
-    tokens = min(capacity, tokens + (now - last) * refill_rate)
+    tokens = min(10.0, tokens + (now - last) * 0.5)
     if tokens < 1.0:
-        raise PermissionError("Rate limit exceeded. Please wait before sending another message.")
+        raise PermissionError("Rate limit exceeded.")
     _buckets[user_id] = (now, tokens - 1.0)
 
-# --- Guarded inference call ---
 def call_llm(user_id: str, user_text: str, history: list[dict]) -> str:
     check_rate_limit(user_id)
-    safe_text = validate_input(user_text)
-    history = trim_history(history)
-    history.append({"role": "user", "content": safe_text})
-
+    if len(user_text) > MAX_INPUT_CHARS:
+        raise ValueError(f"Input exceeds {MAX_INPUT_CHARS} chars")
+    system = [m for m in history if m["role"] == "system"]
+    trimmed = system + [m for m in history if m["role"] != "system"][-(MAX_CONTEXT_TURNS * 2):]
+    trimmed.append({"role": "user", "content": user_text.strip()})
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=history,
-        max_tokens=MAX_OUTPUT_TOKENS,   # always set
-        timeout=30,                     # fail fast; never block indefinitely
+        messages=trimmed,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        timeout=30,
     )
     return response.choices[0].message.content
 ```

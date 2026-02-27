@@ -1,0 +1,103 @@
+name: Skill Smoke Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: "Single skill to test (leave blank to run all)"
+        required: false
+        default: ""
+      verbose:
+        description: "Print full Claude responses"
+        type: boolean
+        default: false
+  schedule:
+    # Every Monday at 09:00 UTC
+    - cron: "0 9 * * 1"
+    # First Monday of Jan/Apr/Jul/Oct at 10:00 UTC — triggers quarterly threat review
+    - cron: "0 10 1-7 1,4,7,10 1"
+
+jobs:
+  smoke-test:
+    name: Run smoke tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Run smoke tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.skill }}" ]; then
+            ARGS="$ARGS --skill ${{ github.event.inputs.skill }}"
+          fi
+          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
+            ARGS="$ARGS --verbose"
+          fi
+          python scripts/smoke-test-skills.py $ARGS
+
+      - name: Summarize results
+        if: always()
+        run: |
+          echo "## Smoke Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Model: \`claude-haiku-4-5\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          python scripts/smoke-test-skills.py 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY || true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  quarterly-threat-review:
+    name: Open quarterly threat radar review issue
+    runs-on: ubuntu-latest
+    # Only runs on the quarterly schedule (10:00 UTC = distinct from weekly 09:00)
+    if: github.event_name == 'schedule' && github.event.schedule == '0 10 1-7 1,4,7,10 1'
+
+    permissions:
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Open threat radar review issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const now = new Date();
+            const quarter = Math.ceil((now.getMonth() + 1) / 3);
+            const year = now.getFullYear();
+            const title = `Quarterly Threat Radar Review — Q${quarter} ${year}`;
+
+            const body = [
+              "Automated quarterly prompt to review `docs/threat-radar.md` and triage new threats.",
+              "",
+              "## Checklist",
+              "",
+              "- [ ] Review `docs/threat-radar.md` — promote any `watching` entries to `candidate` if patterns are now code-detectable",
+              "- [ ] Check OWASP for new draft publications (https://owasp.org/www-project-top-10-for-large-language-model-applications/)",
+              "- [ ] Check NVD for new AI/LLM CVEs since last review (https://nvd.nist.gov/)",
+              "- [ ] Review closed `threat-candidate` issues for nomination patterns",
+              "- [ ] Verify all `shipped` skills still reflect current attack patterns",
+              "",
+              "Close this issue when the review is complete and `threat-radar.md` has been updated.",
+            ].join("\n");
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ["threat-radar-review"],
+            });

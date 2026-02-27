@@ -11,11 +11,18 @@ No configuration needed. No user intervention required.
 ## Install
 
 ```bash
-claude plugin install https://github.com/jefftk/soundcheck
+claude plugin marketplace add jefftk/soundcheck
+claude plugin install soundcheck
 ```
 
 After installation, all 20 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
+
+**Try it without installing** (current session only):
+
+```bash
+claude --plugin-dir /path/to/soundcheck
+```
 
 ---
 
@@ -58,6 +65,9 @@ background on every relevant code-writing task.
 | Autonomous agents, LLM-triggered write/delete/send actions, multi-step pipelines | `excessive-agency` | LLM08:2025 |
 | Displaying LLM output as fact, LLM-driven consequential decisions, no human review | `overreliance` | LLM09:2025 |
 | Inference API endpoints, model access controls, rate limiting on model serving | `model-theft` | LLM10:2025 |
+| MCP server definitions, tool schemas, tool handlers with file/shell/network access | `mcp-security` | LLM07:2025 |
+| OAuth2/OIDC flows, JWT validation, redirect URI handling, token endpoints | `oauth-implementation` | A07:2025 |
+| RAG pipelines, vector store ingestion, external document retrieval for LLM context | `rag-security` | LLM01:2025 |
 
 ---
 
@@ -82,10 +92,31 @@ handling, logging, deserialization, LLM API calls, or agent workflows.
 2. Copy `docs/skill-template.md` to `skills/<name>/SKILL.md`
 3. Fill in all fields — no TODO placeholders
 4. Add a test case to `docs/test-cases/<name>.<ext>`
-5. Verify the skill auto-invokes on its test case
+5. Run the static validator — must pass with no violations:
+   ```bash
+   python scripts/validate-skills.py --skill <name>
+   ```
+6. Run the smoke test to confirm Claude detects the vulnerability:
+   ```bash
+   ANTHROPIC_API_KEY=... python scripts/smoke-test-skills.py --skill <name> --verbose
+   ```
 
 Skills must be under 400 words, include CWE references, and have a concrete runnable
-code rewrite in the "Fix immediately" section.
+code rewrite in the "Fix immediately" section. See `docs/test-case-audit.md` for the
+current audit status of all test cases.
+
+## Nominating a new threat
+
+The threat landscape moves faster than OWASP's publication cycle. To nominate an
+emerging threat for Soundcheck coverage:
+
+1. Open a GitHub Issue using the **[Threat Nomination](.github/ISSUE_TEMPLATE/threat-nomination.md)** template
+2. Include at least one real-world source (CVE, writeup, or incident)
+3. Paste a short code snippet showing the vulnerable pattern — if you can't show code, the threat may not be detectable yet
+
+Nominations are auto-labeled `threat-candidate` and reviewed each quarter. The full
+backlog lives in [`docs/threat-radar.md`](docs/threat-radar.md), which tracks 14+
+threats across four status tiers: `watching`, `candidate`, `in-progress`, and `shipped`.
 
 ---
 

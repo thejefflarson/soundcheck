@@ -58,21 +58,6 @@ def safe_handler(fn):
             log.error("unhandled.exception ref=%s\n%s", ref, traceback.format_exc())
             return _error_response(500, ref)
     return wrapper
-
-# --- Flask global error handlers (production config) ---
-def register_error_handlers(app):
-    app.config["PROPAGATE_EXCEPTIONS"] = False
-    app.config["DEBUG"] = False
-
-    @app.errorhandler(404)
-    def not_found(_):
-        return jsonify({"error": "Not found"}), 404
-
-    @app.errorhandler(500)
-    def internal(_):
-        ref = uuid.uuid4().hex
-        log.error("http.500 ref=%s", ref, exc_info=True)
-        return jsonify({"error": "Internal server error", "ref": ref}), 500
 ```
 
 **Why this works:** Users receive only an opaque reference ID; the full traceback is logged server-side for debugging; `PermissionError` explicitly denies rather than allowing; the catch-all never silently swallows failures.

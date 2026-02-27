@@ -27,3 +27,10 @@ def render_template():
     # BUG: server-side template injection
     template = Template(f"Hello {name}!")
     return template.render()
+
+@app.route("/calc")
+def calculator():
+    expr = request.args.get("expr")
+    # BUG: arbitrary code execution via eval
+    result = eval(expr)
+    return str(result)

@@ -35,18 +35,12 @@ import subprocess
 import shlex
 from typing import Literal
 
-# --- Web rendering (Python / Jinja2 equivalent logic) ---
 def render_llm_text(response: str) -> str:
-    """Escape before inserting into HTML context."""
-    return html.escape(response)          # never use response directly as innerHTML
+    return html.escape(response)  # never assign directly to innerHTML
 
-# --- JavaScript (use DOMPurify for HTML, textContent for plain text) ---
-# WRONG:  element.innerHTML = llmResponse;
-# RIGHT:
-#   element.textContent = llmResponse;                     // plain text, no parse
-#   element.innerHTML = DOMPurify.sanitize(llmResponse);  // when HTML is required
+# JavaScript: use textContent (safe) or DOMPurify.sanitize() (when HTML needed)
+# NEVER: element.innerHTML = llmResponse
 
-# --- Shell command construction ---
 ALLOWED_COMMANDS: set[str] = {"ls", "cat", "echo"}
 
 def run_llm_suggested_command(llm_output: str) -> str:
@@ -55,14 +49,6 @@ def run_llm_suggested_command(llm_output: str) -> str:
         raise ValueError(f"Command not permitted: {parts[0] if parts else '(empty)'}")
     result = subprocess.run(parts, capture_output=True, text=True, timeout=10)
     return result.stdout
-
-# --- Database query (always use parameterized queries) ---
-def query_with_llm_filter(column: Literal["name", "status"], value: str):
-    allowed_columns = {"name", "status"}
-    if column not in allowed_columns:
-        raise ValueError(f"Column not allowed: {column}")
-    # value goes into a parameter placeholder, never string-formatted into SQL
-    return db.execute("SELECT * FROM items WHERE ? = ?", (column, value)).fetchall()
 ```
 
 **Why this works:** `textContent` and `html.escape` stop XSS without blocking legitimate

@@ -34,11 +34,10 @@ from pathlib import Path
 from collections import Counter
 
 KNOWN_DATASET_HASHES: dict[str, str] = {
-    "training_v3.jsonl": "sha256:a3f1c8...",   # pre-computed, stored in version control
+    "training_v3.jsonl": "sha256:a3f1c8...",
 }
 
 def verify_dataset_integrity(path: Path) -> None:
-    """Reject files whose checksum does not match the pinned value."""
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     expected = KNOWN_DATASET_HASHES.get(path.name, "").removeprefix("sha256:")
     if not expected or digest != expected:
@@ -61,7 +60,6 @@ def load_dataset(path: Path, val_fraction: float = 0.1) -> tuple[list, list]:
     verify_dataset_integrity(path)
     raw = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
-    # Deduplicate by content hash
     seen: set[str] = set()
     unique = []
     for ex in raw:
@@ -70,7 +68,6 @@ def load_dataset(path: Path, val_fraction: float = 0.1) -> tuple[list, list]:
             seen.add(h)
             unique.append(ex)
 
-    # Detect label distribution anomalies
     labels = Counter(ex.get("label") for ex in unique)
     total = len(unique)
     for label, count in labels.items():
@@ -78,12 +75,12 @@ def load_dataset(path: Path, val_fraction: float = 0.1) -> tuple[list, list]:
             raise ValueError(f"Label '{label}' is {count/total:.0%} of dataset — possible poisoning")
 
     split = int(len(unique) * (1 - val_fraction))
-    return unique[:split], unique[split:]   # separate train / validation splits
+    return unique[:split], unique[split:]
 ```
 
 **Why this works:** Checksum verification blocks tampered dataset files. Per-example
-validation rejects injected instruction tokens and oversized entries. Deduplication and
-label-distribution checks surface statistical anomalies that indicate batch poisoning.
+validation rejects injected tokens and oversized entries. Label-distribution checks
+surface statistical anomalies that indicate batch poisoning.
 
 ## Verification
 

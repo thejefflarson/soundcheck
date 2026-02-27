@@ -2,8 +2,9 @@
 
 ## What is Soundcheck?
 
-Soundcheck is a Claude Code plugin providing 20 auto-invoking security skills that cover
-OWASP Web Top 10:2025 and OWASP LLM Top 10:2025. When Claude detects vulnerable code
+Soundcheck is a Claude Code plugin providing 23 auto-invoking security skills that cover
+OWASP Web Top 10:2025 and OWASP LLM Top 10:2025, plus emerging threats tracked in
+`docs/threat-radar.md`. When Claude detects vulnerable code
 patterns, the relevant skill auto-invokes, rewrites the vulnerable code, explains the
 change, and continues with the original task — no user intervention required.
 
@@ -78,3 +79,18 @@ To verify a skill works:
 - Template: `docs/skill-template.md`
 - Test cases: `docs/test-cases/<skill-name>.<ext>`
 - Plugin manifest: `.claude-plugin/plugin.json`
+- Threat radar: `docs/threat-radar.md`
+- Threat nomination template: `.github/ISSUE_TEMPLATE/threat-nomination.md`
+
+## Nominating a Threat
+
+The threat landscape moves faster than OWASP's publication cycle. To nominate a new
+threat for Soundcheck coverage:
+
+1. Open a GitHub Issue using `.github/ISSUE_TEMPLATE/threat-nomination.md`
+2. Include at least one real-world source (CVE, writeup, or incident)
+3. Include a code snippet showing the vulnerable pattern
+
+Nominations are labeled `threat-candidate` and reviewed quarterly. The backlog lives in
+`docs/threat-radar.md` with four status tiers: `watching`, `candidate`, `in-progress`,
+and `shipped`.

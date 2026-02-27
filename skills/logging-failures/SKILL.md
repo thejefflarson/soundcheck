@@ -32,12 +32,10 @@ import json
 import re
 from typing import Any
 
-# Structured JSON logger — feeds cleanly into SIEM / log aggregators
 class StructuredLogger:
     def __init__(self, name: str):
         self._log = logging.getLogger(name)
 
-    # Fields that must never appear in logs
     _SCRUB = frozenset({"password", "passwd", "token", "secret",
                         "authorization", "api_key", "credit_card", "ssn"})
 
@@ -58,7 +56,6 @@ class StructuredLogger:
 
 log = StructuredLogger(__name__)
 
-# Usage — security events that must always be logged:
 def login(username: str, password: str) -> dict:
     user = db.get_user(username)
     if not user or not verify_password(password, user.password_hash):

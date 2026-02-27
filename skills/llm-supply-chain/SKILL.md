@@ -37,8 +37,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Pin exact commit SHA — never use "main" or "latest"
 PINNED_MODEL_ID  = "meta-llama/Llama-3.2-1B"
-PINNED_REVISION  = "a7c4f09e"          # git commit SHA from the model repository
-EXPECTED_SHA256  = "b3d9f1..."          # pre-computed and stored in version control
+PINNED_REVISION  = "a7c4f09e"          # exact commit SHA
+EXPECTED_SHA256  = "b3d9f1..."          # pinned in version control
 
 ALLOWED_ORGS = {"meta-llama", "mistralai", "google", "openai"}
 
