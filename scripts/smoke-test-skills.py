@@ -225,6 +225,15 @@ EXPECTED_KEYWORDS: dict[str, list[str]] = {
         "url",
         "context",
     ],
+    "threat-modeling": [
+        "authentication",
+        "authorization",
+        "rate limit",
+        "encryption",
+        "trust boundary",
+        "threat",
+        "access control",
+    ],
 }
 
 

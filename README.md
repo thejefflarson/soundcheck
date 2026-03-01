@@ -15,7 +15,7 @@ claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
-After installation, all 23 skills are active in every Claude Code session. Claude will
+After installation, all 24 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
 
 **Try it without installing** (current session only):
@@ -68,6 +68,7 @@ background on every relevant code-writing task.
 | MCP server definitions, tool schemas, tool handlers with file/shell/network access | `mcp-security` | LLM07:2025 |
 | OAuth2/OIDC flows, JWT validation, redirect URI handling, token endpoints | `oauth-implementation` | A07:2025 |
 | RAG pipelines, vector store ingestion, external document retrieval for LLM context | `rag-security` | LLM01:2025 |
+| Implementation plans for features, APIs, or components touching user data or auth | `threat-modeling` | A06:2025 |
 
 ---
 

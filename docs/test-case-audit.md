@@ -37,6 +37,7 @@ Track the quality of each skill's test case. Update this file as gaps are fixed.
 | mcp-security | `.py` | ✅ | ✅ | ✅ | Hardcoded secret, shell injection, path traversal, unconstrained schema |
 | oauth-implementation | `.py` | ✅ | ✅ | ✅ | alg:none, prefix redirect_uri, no state, hardcoded secret |
 | rag-security | `.py` | ✅ | ✅ | ✅ | Arbitrary URL fetch, no length cap, undelimited context injection |
+| threat-modeling | `.md` | ✅ | ✅ | n/a | Plan with missing auth, no rate limits, unprotected PII flow, no confirmation gate |
 
 **Legend:** ✅ Pass  ⚠️ Needs attention  ❌ Failing
 
