@@ -11,6 +11,7 @@ def login():
     user = db.find_user(username)
     if not user:
         return jsonify({"error": "User not found"}), 404  # BUG: reveals user existence
+    # BUG: different message from "User not found" above lets attackers enumerate valid usernames
     if user.password != password:
         return jsonify({"error": "Wrong password"}), 401
     return jsonify({"token": generate_token(user)})

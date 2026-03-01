@@ -15,7 +15,7 @@ claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
-After installation, all 20 skills are active in every Claude Code session. Claude will
+After installation, all 23 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
 
 **Try it without installing** (current session only):

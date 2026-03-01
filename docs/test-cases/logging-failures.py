@@ -25,3 +25,11 @@ def get_data():
     # BUG: logs full request headers and body, potentially including PII/tokens
     logger.debug(f"Request: {request.headers} {request.get_json()}")
     return jsonify(fetch_data())
+
+@app.route("/profile")
+def get_profile():
+    username = request.args.get("username", "")
+    # BUG: CRLF injection — attacker passes username="alice\nINFO:root: Admin logged in"
+    # to forge log entries and obscure malicious activity
+    logger.info(f"Profile viewed: username={username}")
+    return jsonify(fetch_profile(username))
