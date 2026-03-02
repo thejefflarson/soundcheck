@@ -2,8 +2,7 @@
 name: injection
 description: Use when writing code that constructs database queries, builds SQL strings,
   executes shell commands, processes templates with user input, evaluates code dynamically,
-  or passes user-controlled data to any external interpreter. Also invoke when reviewing
-  ORM raw queries or NoSQL filter objects.
+  or passes user-controlled data to any external interpreter.
 ---
 
 # Injection Security Check (A05:2025)

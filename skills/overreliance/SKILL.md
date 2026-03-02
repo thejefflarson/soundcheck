@@ -1,9 +1,8 @@
 ---
 name: overreliance
 description: Use when writing code that displays LLM output as authoritative fact,
-  uses LLM decisions to gate consequential outcomes without human review, builds
-  automated pipelines where LLM judgment drives downstream actions, or presents
-  LLM-generated content without accuracy caveats.
+  uses LLM decisions to gate consequential outcomes without human review, or builds
+  automated pipelines where LLM judgment drives downstream actions.
 ---
 
 # Overreliance on LLM Output (OWASP LLM09:2025)

@@ -2,8 +2,7 @@
 name: insecure-local-storage
 description: Use when writing code that stores sensitive data (credentials, tokens, PII)
   to local files, platform preference stores (NSUserDefaults, SharedPreferences,
-  UserDefaults), SQLite databases, or localStorage without encryption at rest. Also
-  invoke when writing sensitive data to temp directories or world-readable file paths.
+  UserDefaults), SQLite databases, or localStorage without encryption at rest.
 ---
 
 # Insecure Local Data Storage (A02:2025)

@@ -2,8 +2,7 @@
 name: security-misconfiguration
 description: Use when writing server configuration, setting environment variables,
   configuring CORS policies, enabling debug modes, setting up default credentials,
-  or deploying application infrastructure. Also invoke when writing middleware that
-  sets security headers.
+  or deploying application infrastructure. Also invoke when writing security headers middleware.
 ---
 
 # Security Misconfiguration Security Check (A02:2025)

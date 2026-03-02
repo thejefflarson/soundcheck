@@ -2,8 +2,7 @@
 name: exceptional-conditions
 description: Use when writing error handlers, exception catching blocks, try/catch/finally
   constructs, or API error responses. Also invoke when an application could fail open
-  (default-allow) on exception, or when stack traces or internal error details might
-  reach end users.
+  on exception, or when stack traces might reach end users.
 ---
 
 # Exceptional Conditions Security Check (A10:2025)

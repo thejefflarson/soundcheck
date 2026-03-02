@@ -2,8 +2,7 @@
 name: llm-supply-chain
 description: Use when writing code that downloads pre-trained models, loads models
   from registries or file paths, integrates third-party LLM providers, or manages
-  model version selection. Also invoke when setting up model serving infrastructure
-  or automated model updates.
+  model version selection. Also invoke when setting up automated model updates.
 ---
 
 # LLM Supply Chain Security Check (OWASP LLM05:2025)

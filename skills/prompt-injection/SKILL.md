@@ -1,9 +1,8 @@
 ---
 name: prompt-injection
-description: Use when writing code that constructs prompts for LLMs using user-supplied
-  input, builds system prompts, implements RAG pipelines, or processes external documents
-  fed to an LLM. Also invoke when building tools that allow external data to influence
-  LLM context or creating multi-turn conversation handlers.
+description: Use when writing code that constructs LLM prompts from user input, builds
+  system prompts, implements RAG pipelines, or processes external documents fed to a
+  model. Also invoke when external data can influence LLM context.
 ---
 
 # Prompt Injection Security Check (OWASP LLM01:2025)

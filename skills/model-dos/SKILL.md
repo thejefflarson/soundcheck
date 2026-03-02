@@ -1,9 +1,8 @@
 ---
 name: model-dos
 description: Use when writing LLM API call handlers, setting up inference endpoints,
-  implementing chatbot backends, or configuring token limits and request throttling
-  for LLM services. Also invoke when accepting user-provided prompts without length
-  or complexity constraints.
+  implementing chatbot backends, or configuring token limits for LLM services. Also
+  invoke when accepting user-provided prompts without length constraints.
 ---
 
 # Model Denial of Service Security Check (OWASP LLM04:2025)

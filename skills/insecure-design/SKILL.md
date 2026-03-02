@@ -2,8 +2,7 @@
 name: insecure-design
 description: Use when designing authentication flows, implementing rate limiting, building
   business logic for financial or access-sensitive operations, or writing code that enforces
-  security requirements at the application layer. Also invoke when designing multi-step
-  workflows that change user state or permissions.
+  security requirements at the application layer.
 ---
 
 # Insecure Design Security Check (A06:2025)

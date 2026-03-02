@@ -2,8 +2,7 @@
 name: insecure-plugin-design
 description: Use when writing LLM tool definitions, function schemas for tool use,
   plugin or extension handlers, or any code that defines what actions an LLM can
-  take via tools. Also invoke when implementing tool parameter validation or access
-  controls for LLM-callable functions.
+  take via tools. Also invoke when implementing tool parameter validation.
 ---
 
 # Insecure Plugin Design (OWASP LLM07:2025)

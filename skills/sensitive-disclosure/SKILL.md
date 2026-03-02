@@ -1,9 +1,8 @@
 ---
 name: sensitive-disclosure
 description: Use when writing code that passes sensitive data (PII, credentials, health
-  data, financial info) to an LLM API, constructs system prompts containing secrets,
-  returns LLM responses to users that could contain training data, or implements memory/context
-  persistence across LLM sessions.
+  data) to an LLM API, constructs system prompts containing secrets, returns LLM responses
+  that could contain training data, or implements memory/context persistence.
 ---
 
 # Sensitive Information Disclosure (OWASP LLM06:2025)

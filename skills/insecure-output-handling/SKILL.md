@@ -2,8 +2,7 @@
 name: insecure-output-handling
 description: Use when writing code that renders LLM output to a UI, executes LLM-generated
   code or shell commands, or passes LLM responses to downstream APIs or databases.
-  Also invoke when displaying markdown or HTML from an LLM response or using LLM output
-  as input to another system.
+  Also invoke when displaying markdown or HTML from an LLM response.
 ---
 
 # Insecure Output Handling Security Check (OWASP LLM02:2025)

@@ -2,8 +2,7 @@
 name: integrity-failures
 description: Use when writing deserialization code, processing pickled or marshalled
   data, implementing software update mechanisms, consuming CI/CD artifact downloads,
-  or handling data from untrusted sources that gets reconstructed into objects. Also
-  invoke when verifying digital signatures or checksums.
+  or handling data from untrusted sources that gets reconstructed into objects.
 ---
 
 # Software and Data Integrity Failures Security Check (A08:2025)
