@@ -42,6 +42,27 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Sources:** OWASP LLM Top 10:2025 LLM01; Lakera RAG security research (2025)
 - **Added:** 2026-02-26
 
+### Insecure Local Data Storage
+- **Status:** `shipped` (`skills/insecure-local-storage/`)
+- **OWASP:** A02:2025 / Mobile M9:2024
+- **Severity:** High
+- **Why code-detectable:** Credentials/tokens written to plaintext files, NSUserDefaults, SharedPreferences, or temp directories without encryption
+- **Added:** 2026-03-01
+
+### IPC Security
+- **Status:** `shipped` (`skills/ipc-security/`)
+- **OWASP:** A01:2025 / Mobile M4:2024
+- **Severity:** High
+- **Why code-detectable:** URL scheme handlers without allowlists, exported Android activities without permissions, IPC sockets bound to 0.0.0.0 without authentication
+- **Added:** 2026-03-01
+
+### On-Demand Security Review
+- **Status:** `shipped` (`skills/security-review/`)
+- **OWASP:** A01:2025–A10:2025 + LLM01:2025–LLM10:2025
+- **Severity:** N/A (orchestrator skill)
+- **Why code-detectable:** User-invocable slash command; orchestrates all Soundcheck skills in sequence and produces a severity-ranked findings report
+- **Added:** 2026-03-01
+
 ### Slopsquatting / AI Hallucinated Package Names
 - **Status:** `candidate`
 - **OWASP:** A03:2025 (extends existing `supply-chain` skill)

@@ -1,0 +1,26 @@
+# Claude Code local settings (dev permissions, not for committing)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Profiling artifacts
+*.profraw
+*.profdata
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

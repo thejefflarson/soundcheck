@@ -53,6 +53,12 @@ the pattern. Claude will use this section to perform the actual rewrite.
 Include the full category identifier (e.g., `A01:2025`, `LLM08:2025`) in the skill title
 and in the References section.
 
+## Updating the Security Review Skill
+
+`skills/security-review/SKILL.md` contains an explicit list of every Soundcheck skill.
+**When adding a new skill, add it to the skill list in the "Fix immediately" section of
+that file.** The skill will not be included in `/security-review` sweeps otherwise.
+
 ## Testing Skills
 
 To verify a skill works:
