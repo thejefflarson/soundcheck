@@ -18,7 +18,12 @@ skill suite against the code in context.
 
 ## Fix immediately
 
-1. If no file is in context, ask: "Which file(s) should I review?"
+1. Use the Glob tool to discover all source files in the current project
+   (patterns: `**/*.py`, `**/*.js`, `**/*.ts`, `**/*.go`, `**/*.java`, `**/*.rb`,
+   `**/*.php`, `**/*.cs`, `**/*.rs`). Skip `node_modules/`, `.venv/`, `dist/`,
+   `build/`, and other generated/dependency directories. Read each discovered file.
+   If the project is too large to read fully, prioritize files that handle auth,
+   data access, external I/O, and configuration.
 2. Invoke each Soundcheck skill in sequence:
 
 **Web Top 10:** `soundcheck:injection` · `soundcheck:authentication-failures` ·

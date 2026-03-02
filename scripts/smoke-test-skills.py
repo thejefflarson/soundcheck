@@ -17,6 +17,7 @@ Cost estimate: ~20 calls × ~500 tokens each ≈ $0.10–0.30 per full run
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 import anthropic
@@ -234,6 +235,16 @@ EXPECTED_KEYWORDS: dict[str, list[str]] = {
         "threat",
         "access control",
     ],
+    "security-review": [
+        "sql injection",
+        "command injection",
+        "md5",
+        "plaintext",
+        "password",
+        "credentials",
+        "logging",
+        "exception",
+    ],
 }
 
 
@@ -264,16 +275,27 @@ def run_smoke_test(
 
     code = test_case.read_text(encoding="utf-8")
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": f"{PROMPT}\n\n```\n{code}\n```",
-            }
-        ],
-    )
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=1024,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"{PROMPT}\n\n```\n{code}\n```",
+                    }
+                ],
+            )
+            break
+        except anthropic.APIStatusError as exc:
+            if exc.status_code == 529 and attempt < max_retries - 1:
+                wait = 2 ** attempt
+                print(f"  [overloaded, retrying in {wait}s]", flush=True)
+                time.sleep(wait)
+            else:
+                raise
 
     response_text = response.content[0].text.lower()
 
@@ -322,7 +344,9 @@ def main() -> int:
     print(f"{'Skill':<{col_width}} {'Status':<8}  Detail")
     print("-" * 72)
 
-    for skill_name in skill_names:
+    for i, skill_name in enumerate(skill_names):
+        if i > 0:
+            time.sleep(1)
         try:
             passed, detail = run_smoke_test(client, skill_name, verbose=args.verbose)
         except anthropic.APIError as exc:
