@@ -55,9 +55,10 @@ and in the References section.
 
 ## Updating the Security Review Skill
 
-`skills/security-review/SKILL.md` contains an explicit list of every Soundcheck skill.
-**When adding a new skill, add it to the skill list in the "Fix immediately" section of
-that file.** The skill will not be included in `/security-review` sweeps otherwise.
+`skills/security-review/SKILL.md` contains a list of every Soundcheck skill with a
+short description of what it covers. **When adding a new skill, add it to the list in
+the "Fix immediately" section of that file.** The skill will not be considered during
+`/security-review` sweeps otherwise.
 
 ## Testing Skills
 

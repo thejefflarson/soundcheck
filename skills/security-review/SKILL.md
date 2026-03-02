@@ -8,55 +8,58 @@ description: Use when the user types /security-review or explicitly requests a f
 
 ## What this checks
 
-Runs every Soundcheck skill against the code in context, producing a single
-severity-ranked findings report covering all OWASP Web and LLM categories.
+Orchestrates the Soundcheck skill suite, producing a severity-ranked findings report.
 
 ## Vulnerable patterns
 
-This skill does not define its own patterns — it orchestrates the full Soundcheck
-skill suite against the code in context.
+This skill does not define its own patterns — it orchestrates other Soundcheck skills.
 
 ## Fix immediately
 
-1. Use the Glob tool to discover all source files in the current project
-   (patterns: `**/*.py`, `**/*.js`, `**/*.ts`, `**/*.go`, `**/*.java`, `**/*.rb`,
-   `**/*.php`, `**/*.cs`, `**/*.rs`). Skip `node_modules/`, `.venv/`, `dist/`,
-   `build/`, and other generated/dependency directories. Read each discovered file.
-   If the project is too large to read fully, prioritize files that handle auth,
-   data access, external I/O, and configuration.
-2. Invoke each Soundcheck skill in sequence:
+1. Glob all source files (`**/*.py`, `**/*.js`, `**/*.ts`, `**/*.go`, `**/*.java`,
+   `**/*.rb`, `**/*.php`, `**/*.cs`, `**/*.rs`). Skip `node_modules/`, `.venv/`,
+   `dist/`, `build/`. Read each file; prioritize auth, I/O, and config for large repos.
 
-**Web Top 10:** `soundcheck:injection` · `soundcheck:authentication-failures` ·
-`soundcheck:cryptographic-failures` · `soundcheck:insecure-design` ·
-`soundcheck:security-misconfiguration` · `soundcheck:supply-chain` ·
-`soundcheck:integrity-failures` · `soundcheck:logging-failures` ·
-`soundcheck:exceptional-conditions` · `soundcheck:broken-access-control`
+2. Based on what you read, invoke only relevant skills; skip any whose category is absent.
 
-**LLM Top 10:** `soundcheck:prompt-injection` · `soundcheck:sensitive-disclosure` ·
-`soundcheck:llm-supply-chain` · `soundcheck:training-data-poisoning` ·
-`soundcheck:model-dos` · `soundcheck:insecure-output-handling` ·
-`soundcheck:insecure-plugin-design` · `soundcheck:excessive-agency` ·
-`soundcheck:overreliance` · `soundcheck:model-theft`
+   `soundcheck:injection` — SQL, shell, templates, eval with user input
+   `soundcheck:authentication-failures` — login, sessions, passwords, MFA, API keys
+   `soundcheck:cryptographic-failures` — encryption, hashing, RNG, TLS
+   `soundcheck:security-misconfiguration` — server config, CORS, debug flags, headers
+   `soundcheck:supply-chain` — package manifests, dependency pinning, CI/CD
+   `soundcheck:integrity-failures` — deserialization, pickle, update verification
+   `soundcheck:logging-failures` — logging, audit trails, security events
+   `soundcheck:exceptional-conditions` — error handlers, try/catch, error responses
+   `soundcheck:broken-access-control` — authorization, ownership, IDOR
+   `soundcheck:insecure-design` — rate limiting, business logic, state changes
+   `soundcheck:prompt-injection` — LLM prompts with user or external input
+   `soundcheck:sensitive-disclosure` — PII or credentials in LLM context
+   `soundcheck:llm-supply-chain` — loading or downloading pre-trained models
+   `soundcheck:training-data-poisoning` — fine-tuning pipelines, dataset ingestion
+   `soundcheck:model-dos` — LLM endpoints with unbounded user prompts
+   `soundcheck:insecure-output-handling` — rendering or executing LLM output
+   `soundcheck:insecure-plugin-design` — LLM tool/function definitions
+   `soundcheck:excessive-agency` — autonomous agents, LLM-triggered real-world actions
+   `soundcheck:overreliance` — LLM output as fact or gating decisions
+   `soundcheck:model-theft` — model inference APIs, extraction risk
+   `soundcheck:mcp-security` — MCP server definitions, tool handlers
+   `soundcheck:oauth-implementation` — OAuth2/OIDC flows, JWT validation
+   `soundcheck:rag-security` — RAG pipelines, vector stores, doc retrieval
+   `soundcheck:insecure-local-storage` — credentials/tokens in local files or platform stores
+   `soundcheck:ipc-security` — URL schemes, Android intents, XPC, IPC sockets
+   `soundcheck:threat-modeling` — new endpoints, pipelines, trust boundary changes
 
-**Additional:** `soundcheck:mcp-security` · `soundcheck:oauth-implementation` ·
-`soundcheck:rag-security` · `soundcheck:insecure-local-storage` ·
-`soundcheck:ipc-security` · `soundcheck:threat-modeling`
+3. Output a findings table:
 
-3. After all skills run, output a findings table:
-
-```
-| Severity | Skill | Finding |
-|----------|-------|---------|
-```
+   | Severity | Skill | Finding |
+   |----------|-------|---------|
 
 4. Rewrite all Critical and High findings using each skill's fix pattern.
-5. Summarize: "X issue(s) found. Y rewritten. Z categories clean."
-
-**When adding a new skill to Soundcheck, add it to the list in step 2 above.**
+5. Summarize: "X found. Y rewritten. Z clean. N skipped (not applicable)."
 
 ## Verification
 
-- [ ] All skills in the list above were invoked
+- [ ] Only relevant skills invoked; skipped skills noted
 - [ ] Findings table produced with severity ranking
 - [ ] All Critical/High findings rewritten in place
 

@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-API smoke tests for Soundcheck skill test cases.
+LLM-as-judge smoke tests for Soundcheck skills.
 
-Sends each test case to the Claude API and asserts that the response identifies
-the expected vulnerability type. Uses claude-haiku-4-5 to keep costs low.
+For each skill:
+  1. Loads the skill's SKILL.md as system context
+  2. Sends the test case to Claude for a security review
+  3. Extracts the skill's ## Verification criteria
+  4. Asks a judge to evaluate the response against those criteria
+  5. Reports pass/fail per criterion
 
 Usage:
     python scripts/smoke-test-skills.py
@@ -11,11 +15,13 @@ Usage:
     python scripts/smoke-test-skills.py --verbose
     python scripts/smoke-test-skills.py --fail-fast
 
-Cost estimate: ~20 calls × ~500 tokens each ≈ $0.10–0.30 per full run
+Cost estimate: ~26 skills × 2 calls × ~800 tokens ≈ $0.30–0.60 per full run
 """
 
 import argparse
+import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -23,301 +29,183 @@ from pathlib import Path
 import anthropic
 
 ROOT = Path(__file__).parent.parent
-
 MODEL = "claude-haiku-4-5"
 
-PROMPT = (
-    "Identify all security vulnerabilities in this code. "
-    "Be specific about vulnerability types."
+REVIEW_PROMPT = (
+    "Review this file for security issues. "
+    "Identify all vulnerabilities and rewrite any insecure code."
 )
 
-# Expected keywords per skill (case-insensitive, any match = pass)
-EXPECTED_KEYWORDS: dict[str, list[str]] = {
-    "injection": [
-        "sql injection",
-        "command injection",
-        "shell injection",
-        "template injection",
-        "code injection",
-    ],
-    "broken-access-control": [
-        "access control",
-        "authorization",
-        "ssrf",
-        "privilege escalation",
-        "idor",
-    ],
-    "cryptographic-failures": [
-        "md5",
-        "weak",
-        "bcrypt",
-        "aes",
-        "random",
-        "cryptograph",
-        "hash",
-    ],
-    "authentication-failures": [
-        "password",
-        "hash",
-        "bcrypt",
-        "jwt",
-        "session",
-        "hardcoded",
-        "credential",
-        "brute force",
-    ],
-    "insecure-design": [
-        "rate limit",
-        "lockout",
-        "re-authentication",
-        "business logic",
-        "brute force",
-    ],
-    "security-misconfiguration": [
-        "cors",
-        "debug",
-        "default",
-        "header",
-        "misconfiguration",
-        "secret key",
-    ],
-    "supply-chain": [
-        "dependency",
-        "version",
-        "lockfile",
-        "checksum",
-        "supply chain",
-        "package",
-        "curl",
-        "pipe",
-    ],
-    "integrity-failures": [
-        "pickle",
-        "deserializ",
-        "yaml",
-        "signature",
-        "marshal",
-        "unsafe",
-    ],
-    "logging-failures": [
-        "log",
-        "crlf",
-        "password",
-        "sensitive",
-        "audit",
-        "injection",
-    ],
-    "exceptional-conditions": [
-        "stack trace",
-        "error disclosure",
-        "exception",
-        "sensitive",
-        "information leakage",
-        "error handling",
-    ],
-    "prompt-injection": [
-        "prompt injection",
-        "indirect injection",
-        "user input",
-        "instruction",
-    ],
-    "insecure-output-handling": [
-        "xss",
-        "cross-site scripting",
-        "innerhtml",
-        "injection",
-        "sanitiz",
-        "escape",
-    ],
-    "training-data-poisoning": [
-        "poison",
-        "dataset",
-        "label",
-        "validation",
-        "checksum",
-        "manipulation",
-    ],
-    "model-dos": [
-        "denial of service",
-        "resource",
-        "max_tokens",
-        "rate limit",
-        "input",
-        "exhaustion",
-        "dos",
-    ],
-    "llm-supply-chain": [
-        "model",
-        "checksum",
-        "pin",
-        "hash",
-        "supply chain",
-        "version",
-        "huggingface",
-    ],
-    "sensitive-disclosure": [
-        "sensitive",
-        "pii",
-        "personal",
-        "credential",
-        "leak",
-        "disclose",
-        "privacy",
-    ],
-    "insecure-plugin-design": [
-        "path traversal",
-        "injection",
-        "validation",
-        "authorization",
-        "input",
-    ],
-    "excessive-agency": [
-        "permission",
-        "privilege",
-        "agency",
-        "action",
-        "irreversible",
-        "approval",
-        "execute",
-    ],
-    "overreliance": [
-        "hallucination",
-        "verification",
-        "review",
-        "reliance",
-        "disclaimer",
-        "confidence",
-        "trust",
-        "validate",
-    ],
-    "model-theft": [
-        "rate limit",
-        "extraction",
-        "api",
-        "quota",
-        "theft",
-        "model",
-        "unauthorized",
-    ],
-    "mcp-security": [
-        "path traversal",
-        "shell injection",
-        "hardcoded",
-        "command injection",
-        "secret",
-        "input validation",
-        "schema",
-    ],
-    "oauth-implementation": [
-        "redirect",
-        "jwt",
-        "algorithm",
-        "csrf",
-        "state",
-        "open redirect",
-        "authentication",
-    ],
-    "rag-security": [
-        "prompt injection",
-        "ssrf",
-        "allowlist",
-        "retrieval",
-        "injection",
-        "url",
-        "context",
-    ],
-    "threat-modeling": [
-        "authentication",
-        "authorization",
-        "rate limit",
-        "encryption",
-        "trust boundary",
-        "threat",
-        "access control",
-    ],
-    "security-review": [
-        "sql injection",
-        "command injection",
-        "md5",
-        "plaintext",
-        "password",
-        "credentials",
-        "logging",
-        "exception",
-    ],
-}
+JUDGE_SYSTEM = (
+    "You are a precise test evaluator for a security code review system. "
+    "Evaluate whether a review response satisfies each verification criterion. "
+    "Be strict but fair — a criterion is only satisfied if the response clearly "
+    "demonstrates the required behavior. Output only valid JSON, no prose."
+)
+
+JUDGE_PROMPT = """\
+Skill under test: {skill_name}
+
+Verification criteria (ALL must be satisfied for the test to pass):
+{criteria}
+
+Vulnerable test case:
+```
+{code}
+```
+
+Security review response to evaluate:
+{response}
+
+Output JSON only:
+{{
+  "passed": <true if ALL criteria are satisfied, false otherwise>,
+  "criteria": [
+    {{
+      "criterion": "<criterion text>",
+      "passed": <true|false>,
+      "evidence": "<brief quote or explanation>"
+    }}
+  ]
+}}"""
 
 
 def find_test_case(skill_name: str) -> Path | None:
-    """Find the test case file for a skill."""
     test_dir = ROOT / "docs" / "test-cases"
     matches = list(test_dir.glob(f"{skill_name}.*"))
     return matches[0] if matches else None
+
+
+def find_all_skills() -> list[str]:
+    skills_dir = ROOT / "skills"
+    return sorted(p.name for p in skills_dir.iterdir() if (p / "SKILL.md").exists())
+
+
+def extract_verification_criteria(skill_content: str) -> list[str]:
+    match = re.search(r"## Verification\n(.*?)(?=\n## |\Z)", skill_content, re.DOTALL)
+    if not match:
+        return []
+    return re.findall(r"- \[ \] (.+)", match.group(1))
+
+
+def extract_json(text: str) -> str:
+    """Strip markdown code fences if present, then return the first JSON object."""
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fenced:
+        return fenced.group(1)
+    bare = re.search(r"\{.*\}", text, re.DOTALL)
+    return bare.group(0) if bare else text
+
+
+def api_call_with_retry(
+    client: anthropic.Anthropic, kwargs: dict, max_retries: int = 5
+) -> anthropic.types.Message:
+    for attempt in range(max_retries):
+        try:
+            return client.messages.create(**kwargs)
+        except anthropic.APIStatusError as exc:
+            if exc.status_code == 529 and attempt < max_retries - 1:
+                wait = 2**attempt
+                print(f"  [overloaded, retrying in {wait}s]", flush=True)
+                time.sleep(wait)
+            else:
+                raise
 
 
 def run_smoke_test(
     client: anthropic.Anthropic,
     skill_name: str,
     verbose: bool = False,
-) -> tuple[bool, str]:
+) -> tuple[bool, list[dict], str]:
     """
-    Run a single smoke test.
+    Run a single LLM-as-judge smoke test.
 
-    Returns (passed, detail_message).
+    Returns (passed, criteria_results, detail_message).
     """
     test_case = find_test_case(skill_name)
     if test_case is None:
-        return False, f"No test case found for {skill_name!r}"
+        return False, [], "no test case found"
 
-    keywords = EXPECTED_KEYWORDS.get(skill_name)
-    if keywords is None:
-        return False, f"No expected keywords defined for {skill_name!r}"
+    skill_path = ROOT / "skills" / skill_name / "SKILL.md"
+    if not skill_path.exists():
+        return False, [], "no SKILL.md found"
+
+    skill_content = skill_path.read_text(encoding="utf-8")
+    criteria = extract_verification_criteria(skill_content)
+    if not criteria:
+        return False, [], "no verification criteria in SKILL.md"
 
     code = test_case.read_text(encoding="utf-8")
 
-    max_retries = 5
-    for attempt in range(max_retries):
-        try:
-            response = client.messages.create(
-                model=MODEL,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"{PROMPT}\n\n```\n{code}\n```",
-                    }
-                ],
-            )
-            break
-        except anthropic.APIStatusError as exc:
-            if exc.status_code == 529 and attempt < max_retries - 1:
-                wait = 2 ** attempt
-                print(f"  [overloaded, retrying in {wait}s]", flush=True)
-                time.sleep(wait)
-            else:
-                raise
-
-    response_text = response.content[0].text.lower()
+    # Step 1: Claude reviews the test case with the skill loaded as context
+    review_resp = api_call_with_retry(
+        client,
+        dict(
+            model=MODEL,
+            max_tokens=2048,
+            system=skill_content,
+            messages=[
+                {"role": "user", "content": f"{REVIEW_PROMPT}\n\n```\n{code}\n```"}
+            ],
+        ),
+    )
+    review_text = review_resp.content[0].text
 
     if verbose:
-        print(f"\n--- Claude response for {skill_name} ---")
-        print(response.content[0].text)
-        print("---")
+        print(f"\n--- Review: {skill_name} ---")
+        print(review_text)
 
-    matched = [kw for kw in keywords if kw.lower() in response_text]
-    if matched:
-        return True, f"matched: {matched[0]!r}"
+    # Step 2: Judge evaluates the response against the verification criteria
+    criteria_block = "\n".join(f"- {c}" for c in criteria)
+    judge_resp = api_call_with_retry(
+        client,
+        dict(
+            model=MODEL,
+            max_tokens=1024,
+            system=JUDGE_SYSTEM,
+            messages=[
+                {
+                    "role": "user",
+                    "content": JUDGE_PROMPT.format(
+                        skill_name=skill_name,
+                        criteria=criteria_block,
+                        code=code,
+                        response=review_text,
+                    ),
+                }
+            ],
+        ),
+    )
+    judge_text = judge_resp.content[0].text
+
+    if verbose:
+        print(f"\n--- Judge: {skill_name} ---")
+        print(judge_text)
+
+    try:
+        result = json.loads(extract_json(judge_text))
+    except (json.JSONDecodeError, AttributeError) as exc:
+        return False, [], f"judge returned invalid JSON: {exc}"
+
+    passed = result.get("passed", False)
+    criteria_results = result.get("criteria", [])
+
+    failed = [c for c in criteria_results if not c.get("passed")]
+    if passed:
+        detail = f"all {len(criteria_results)} criteria passed"
     else:
-        return False, f"no keyword matched (expected one of: {keywords})"
+        detail = f"{len(failed)}/{len(criteria_results)} criteria failed"
+
+    return passed, criteria_results, detail
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Smoke test Soundcheck skill detection via Claude API"
+        description="LLM-as-judge smoke tests for Soundcheck skills"
     )
     parser.add_argument("--skill", metavar="NAME", help="Test a single skill by name")
     parser.add_argument(
-        "--verbose", action="store_true", help="Print full Claude responses"
+        "--verbose", action="store_true", help="Print full review and judge responses"
     )
     parser.add_argument(
         "--fail-fast", action="store_true", help="Stop on first failure"
@@ -330,11 +218,7 @@ def main() -> int:
         return 1
 
     client = anthropic.Anthropic(api_key=api_key)
-
-    if args.skill:
-        skill_names = [args.skill]
-    else:
-        skill_names = sorted(EXPECTED_KEYWORDS.keys())
+    skill_names = [args.skill] if args.skill else find_all_skills()
 
     pass_count = 0
     fail_count = 0
@@ -348,12 +232,22 @@ def main() -> int:
         if i > 0:
             time.sleep(1)
         try:
-            passed, detail = run_smoke_test(client, skill_name, verbose=args.verbose)
+            passed, criteria_results, detail = run_smoke_test(
+                client, skill_name, verbose=args.verbose
+            )
         except anthropic.APIError as exc:
-            passed, detail = False, f"API error: {exc}"
+            passed, criteria_results, detail = False, [], f"API error: {exc}"
 
         status = "PASS" if passed else "FAIL"
         print(f"{skill_name:<{col_width}} {status:<8}  {detail}")
+
+        # On failure, show which criteria didn't pass and why
+        if not passed and criteria_results:
+            for c in criteria_results:
+                if not c.get("passed"):
+                    print(f"  {'':>{col_width}}           ✗ {c['criterion']}")
+                    if c.get("evidence"):
+                        print(f"  {'':>{col_width}}             {c['evidence']}")
 
         if passed:
             pass_count += 1

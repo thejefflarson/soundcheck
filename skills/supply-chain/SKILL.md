@@ -69,7 +69,7 @@ known CVEs and prevent lockfile drift before code reaches production.
 After rewriting, confirm:
 
 - [ ] All dependency versions are exact (no `^`, `~`, `>=`, or `*`)
-- [ ] `package-lock.json` / `poetry.lock` / `requirements.txt` (pinned) is committed
+- [ ] Response recommends committing a lockfile (`package-lock.json`, `poetry.lock`, or pinned `requirements.txt`)
 - [ ] CI runs `npm ci` or `pip install --require-hashes` — not bare `npm install`
 - [ ] Audit step (`npm audit` / `pip-audit`) runs and fails the build on high severity
 
