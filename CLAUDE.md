@@ -2,7 +2,7 @@
 
 ## What is Soundcheck?
 
-Soundcheck is a Claude Code plugin providing 23 auto-invoking security skills that cover
+Soundcheck is a Claude Code plugin providing 27 auto-invoking security skills that cover
 OWASP Web Top 10:2025 and OWASP LLM Top 10:2025, plus emerging threats tracked in
 `docs/threat-radar.md`. When Claude detects vulnerable code
 patterns, the relevant skill auto-invokes, rewrites the vulnerable code, explains the
