@@ -4,7 +4,7 @@
   "plugins": [
     {
       "name": "soundcheck",
-      "description": "27 auto-invoking security skills that rewrite vulnerable code inline. Covers OWASP Web Top 10:2025 and LLM Top 10:2025, plus MCP security, OAuth/OIDC, RAG pipelines, and more.",
+      "description": "27 security skills covering OWASP Web and LLM Top 10:2025. Auto-invokes on vulnerable code and rewrites it inline.",
       "version": "1.4.2",
       "license": "MIT",
       "source": {
