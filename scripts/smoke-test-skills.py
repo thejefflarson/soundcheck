@@ -81,6 +81,15 @@ def find_all_skills() -> list[str]:
     return sorted(p.name for p in skills_dir.iterdir() if (p / "SKILL.md").exists())
 
 
+def extract_test_prompt(content: str) -> str | None:
+    """Return the custom prompt from YAML frontmatter, or None if absent."""
+    match = re.match(r"^---\n(.*?)\n---\n", content, re.DOTALL)
+    if not match:
+        return None
+    prompt_match = re.search(r"^prompt:\s*['\"]?(.*?)['\"]?\s*$", match.group(1), re.MULTILINE)
+    return prompt_match.group(1) if prompt_match else None
+
+
 def extract_verification_criteria(skill_content: str) -> list[str]:
     match = re.search(r"## Verification\n(.*?)(?=\n## |\Z)", skill_content, re.DOTALL)
     if not match:
@@ -136,6 +145,7 @@ def run_smoke_test(
         return False, [], "no verification criteria in SKILL.md"
 
     code = test_case.read_text(encoding="utf-8")
+    prompt = extract_test_prompt(code) or REVIEW_PROMPT
 
     # Step 1: Claude reviews the test case with the skill loaded as context
     review_resp = api_call_with_retry(
@@ -145,7 +155,7 @@ def run_smoke_test(
             max_tokens=2048,
             system=skill_content,
             messages=[
-                {"role": "user", "content": f"{REVIEW_PROMPT}\n\n```\n{code}\n```"}
+                {"role": "user", "content": f"{prompt}\n\n```\n{code}\n```"}
             ],
         ),
     )

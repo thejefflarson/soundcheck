@@ -1,3 +1,7 @@
+---
+prompt: "I want to add a payment feature to our app. Here's my implementation plan — can you review it before we start building?"
+---
+
 # Plan: Add Payment Processing Feature
 
 ## Steps
