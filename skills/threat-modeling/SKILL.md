@@ -30,25 +30,12 @@ Add any missing controls as explicit steps in the plan, then continue.
 **Security design checklist:**
 
 ```
-TRUST BOUNDARIES
-[ ] What inputs cross a trust boundary? Are they validated before use?
-[ ] Does any step pass user-supplied data to a database, shell, or template?
-
-DATA FLOWS
-[ ] Does any step persist or transmit PII, credentials, or secrets?
-[ ] Are those flows encrypted in transit and at rest?
-
-ACCESS CONTROL
-[ ] Does every new endpoint require authentication?
-[ ] Are permissions checked at the resource level, not just the route?
-
-ABUSE PREVENTION
-[ ] Are rate limits defined for every new user-facing endpoint?
+[ ] What inputs cross a trust boundary? Are they validated?
+[ ] Does any step persist or transmit PII? Is it encrypted at rest and in transit?
+[ ] Does every new endpoint require authentication and resource-level authorization?
+[ ] Are rate limits defined for every user-facing endpoint?
 [ ] Does any step take an irreversible action without a confirmation gate?
-
-EXTERNAL BOUNDARIES
-[ ] Are inputs from external services validated before use?
-[ ] Are timeouts and error responses defined for every external call?
+[ ] Are inputs from external services validated? Are timeouts defined?
 ```
 
 **Why this works:** Answering these before writing code ensures the reactive Soundcheck
@@ -60,9 +47,9 @@ no encryption) that code-level pattern matching cannot see.
 After updating the plan, confirm:
 
 - [ ] Every new endpoint has an explicit authentication and authorization step
-- [ ] Every data flow involving PII has an explicit encryption step
+- [ ] At least one PII data flow lacking encryption is identified and an encryption control added
 - [ ] Every user-facing endpoint has an explicit rate-limiting step
-- [ ] No irreversible action proceeds without a confirmation or approval step
+- [ ] At least one irreversible action is identified and a confirmation or approval step added
 
 ## References
 

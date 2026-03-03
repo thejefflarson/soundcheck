@@ -22,44 +22,39 @@ full database read/write, remote code execution, and data exfiltration.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
-
-**Secure pattern:**
+Rewrite each vulnerable pattern using the examples below.
 
 ```python
-# SQL — parameterized query (never concatenate)
-cursor.execute("SELECT * FROM users WHERE id = %s AND active = %s", (user_id, True))
+# SQL — parameterized query
+cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
 
-# SQL — SQLAlchemy ORM (preferred)
-user = db.session.execute(
-    select(User).where(User.id == user_id, User.active == True)
-).scalar_one_or_none()
+# Shell — list args, shell=False
+subprocess.run(["convert", filename, output_path], capture_output=True, timeout=30)
 
-# Shell — list args, no shell=True
-import subprocess, shlex
-result = subprocess.run(
-    ["convert", filename, "-resize", "800x600", output_path],
-    capture_output=True, timeout=30
-)   # no shell expansion; each arg is a discrete value
-
-# Template — autoescaping (Jinja2)
+# Template — autoescaping
 from jinja2 import Environment
-env = Environment(autoescape=True)   # HTML-escapes {{ user_content }} automatically
+env = Environment(autoescape=True)
 tmpl = env.from_string("<p>{{ message }}</p>")
 
-# NoSQL — explicit type validation before query
+# NoSQL — schema validation
 from pydantic import BaseModel
-class SearchParams(BaseModel):
-    role: str   # pydantic rejects non-string values
-params = SearchParams(**request.json)
-db.users.find({"role": params.role})
+class Q(BaseModel):
+    role: str
+db.users.find({"role": Q(**request.json).role})
+
+# eval — AST-based safe parser
+import ast, operator
+_OPS = {ast.Add: operator.add, ast.Sub: operator.sub,
+        ast.Mult: operator.mul, ast.Div: operator.truediv}
+def safe_eval(expr: str) -> float:
+    def _e(n):
+        if isinstance(n, ast.Constant): return n.value
+        if isinstance(n, ast.BinOp): return _OPS[type(n.op)](_e(n.left), _e(n.right))
+        raise ValueError(f"Unsupported: {n}")
+    return _e(ast.parse(expr, mode='eval').body)
 ```
 
-**Why this works:** Parameterized queries send data and code on separate channels;
-the database never interprets data as SQL. List-form `subprocess` bypasses the shell
-entirely. Autoescaping and schema validation ensure user data cannot be interpreted
-as interpreter syntax.
+**Why this works:** Parameterized queries keep data and code on separate channels. List-form `subprocess` bypasses shell expansion. Autoescaping and schema validation prevent user data from reaching an interpreter. The AST parser allows only whitelisted math operations.
 
 ## Verification
 
