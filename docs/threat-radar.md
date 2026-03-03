@@ -64,7 +64,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-03-01
 
 ### Slopsquatting / AI Hallucinated Package Names
-- **Status:** `candidate`
+- **Status:** `shipped` (extended `skills/supply-chain/`)
 - **OWASP:** A03:2025 (extends existing `supply-chain` skill)
 - **Severity:** High
 - **Why code-detectable:** LLM-suggested package names that don't exist on PyPI/npm; AI-generated `requirements.txt` or `package.json` with non-existent packages
@@ -73,7 +73,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-02-26
 
 ### Multi-Agent Trust Boundaries
-- **Status:** `candidate`
+- **Status:** `shipped` (`skills/multi-agent-trust/`)
 - **OWASP:** LLM08:2025 (Excessive Agency)
 - **Severity:** High
 - **Why code-detectable:** Agent-to-agent calls without authentication; downstream agents given same permissions as orchestrator; no message signing between agents
@@ -81,7 +81,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-02-26
 
 ### Token Smuggling / Unicode Homoglyph Injection
-- **Status:** `candidate`
+- **Status:** `shipped` (`skills/token-smuggling/`)
 - **OWASP:** LLM01:2025
 - **Severity:** Medium
 - **Why code-detectable:** User input passed to LLMs without Unicode normalization; RTL override characters in untrusted strings; invisible characters in prompt construction

@@ -20,6 +20,7 @@ runtime.
 - `pip install git+https://github.com/user/repo` — installs from an arbitrary git ref with no integrity guarantee
 - No `package-lock.json` / `poetry.lock` committed — lockfile omission defeats reproducible builds
 - `npm install` in CI with no `npm audit` step — vulnerabilities enter the build silently
+- `"ai-fetch-helper": "^1.0.0"` in an AI-generated manifest — hallucinated package names are claimed by attackers before the developer notices (slopsquatting)
 
 ## Fix immediately
 
@@ -60,6 +61,8 @@ cryptography = "42.0.5"
     pip-audit --requirement requirements.txt
 ```
 
+- **Slopsquatting**: verify every AI-suggested package name exists in the registry before installing — `npm view <pkg>` / `pip index versions <pkg>`
+
 **Why this works:** Exact version pins combined with a committed lockfile guarantee
 the same bytes are installed on every machine. `npm ci` and `pip-audit` in CI catch
 known CVEs and prevent lockfile drift before code reaches production.
@@ -72,6 +75,7 @@ After rewriting, confirm:
 - [ ] Response recommends committing a lockfile (`package-lock.json`, `poetry.lock`, or pinned `requirements.txt`)
 - [ ] CI runs `npm ci` or `pip install --require-hashes` — not bare `npm install`
 - [ ] Audit step (`npm audit` / `pip-audit`) runs and fails the build on high severity
+- [ ] Any AI-generated or unrecognized package names are flagged for registry verification before install
 
 ## References
 

@@ -4,8 +4,8 @@
   "plugins": [
     {
       "name": "soundcheck",
-      "description": "27 security skills covering OWASP Web and LLM Top 10:2025. Auto-invokes on vulnerable code and rewrites it inline.",
-      "version": "1.4.2",
+      "description": "29 security skills covering OWASP Web and LLM Top 10:2025. Auto-invokes on vulnerable code and rewrites it inline.",
+      "version": "1.5.0",
       "license": "MIT",
       "source": {
         "source": "github",
