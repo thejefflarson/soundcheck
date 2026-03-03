@@ -28,9 +28,9 @@ def render_template():
     template = Template(f"Hello {name}!")
     return template.render()
 
-@app.route("/calc")
-def calculator():
-    expr = request.args.get("expr")
-    # BUG: arbitrary code execution via eval
-    result = eval(expr)
-    return str(result)
+@app.route("/run")
+def run_script():
+    script = request.args.get("script")
+    # BUG: arbitrary code execution via exec
+    exec(script)
+    return "done"

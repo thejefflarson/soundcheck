@@ -15,55 +15,31 @@ full database read/write, remote code execution, and data exfiltration.
 
 ## Vulnerable patterns
 
-- `f"SELECT * FROM users WHERE id = {user_id}"` — user input concatenated directly into SQL
-- `subprocess.call(f"convert {filename}", shell=True)` — shell expansion allows `; rm -rf /`
-- `eval(user_input)` — arbitrary code execution from user-supplied string
-- `db.collection.find({"role": request.json["role"]})` — NoSQL operator injection (`{"$ne": null}`)
+- `"SELECT * FROM users WHERE id = " + userId` — user input concatenated into SQL
+- `exec("convert " + filename)` — shell expansion allows `; rm -rf /`
+- `eval(userInput)` — arbitrary code execution from user-supplied string
+- `db.find({role: req.body.role})` — NoSQL operator injection (`{"$ne": null}`)
 
 ## Fix immediately
 
-Rewrite each vulnerable pattern using the examples below.
+For each vulnerable call site, apply the appropriate control:
 
-```python
-# SQL — parameterized query
-cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+- **SQL**: use parameterized queries or an ORM — never concatenate user input into query strings
+- **Shell**: pass arguments as an array/list, never as an interpolated string — disable shell expansion
+- **Templates**: enable autoescaping — never construct template strings from user input
+- **NoSQL**: validate filter values against a strict schema before the query executes
+- **eval/exec**: remove entirely — there is no safe way to evaluate user-supplied code strings
 
-# Shell — list args, shell=False
-subprocess.run(["convert", filename, output_path], capture_output=True, timeout=30)
-
-# Template — autoescaping
-from jinja2 import Environment
-env = Environment(autoescape=True)
-tmpl = env.from_string("<p>{{ message }}</p>")
-
-# NoSQL — schema validation
-from pydantic import BaseModel
-class Q(BaseModel):
-    role: str
-db.users.find({"role": Q(**request.json).role})
-
-# eval — AST-based safe parser
-import ast, operator
-_OPS = {ast.Add: operator.add, ast.Sub: operator.sub,
-        ast.Mult: operator.mul, ast.Div: operator.truediv}
-def safe_eval(expr: str) -> float:
-    def _e(n):
-        if isinstance(n, ast.Constant): return n.value
-        if isinstance(n, ast.BinOp): return _OPS[type(n.op)](_e(n.left), _e(n.right))
-        raise ValueError(f"Unsupported: {n}")
-    return _e(ast.parse(expr, mode='eval').body)
-```
-
-**Why this works:** Parameterized queries keep data and code on separate channels. List-form `subprocess` bypasses shell expansion. Autoescaping and schema validation prevent user data from reaching an interpreter. The AST parser allows only whitelisted math operations.
+Rewrite the vulnerable call site in place, explain what changed, then continue.
 
 ## Verification
 
 After rewriting, confirm:
 
-- [ ] No string concatenation or f-strings used to build SQL — only `%s` / `:param` placeholders
-- [ ] All `subprocess` calls use a list for `args` and `shell=False` (the default)
-- [ ] No `eval`, `exec`, or `__import__` called with user-supplied strings
-- [ ] Jinja2 / Twig / Handlebars environments have autoescaping enabled
+- [ ] No string interpolation or concatenation used to build SQL — only parameterized placeholders
+- [ ] Shell commands pass arguments as an array, not as an interpolated string
+- [ ] No `eval()` or `exec()` anywhere in the rewritten code — removed entirely, not replaced with a safer variant
+- [ ] Template rendering uses autoescaping and passes user values as named arguments, never via string concatenation
 - [ ] NoSQL filter values are validated against a strict schema before the query executes
 
 ## References

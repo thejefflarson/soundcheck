@@ -1,17 +1,17 @@
-# Plan: Add User Profile API
+# Plan: Add Payment Processing Feature
 
 ## Steps
 
-1. Create `GET /api/users/:id` endpoint that returns name, email, and profile photo URL
-2. Create `PUT /api/users/:id` endpoint to update name, email, and profile photo
-3. Upload profile photos to S3 bucket `user-photos-prod` using the filename as the key
-4. Create `GET /api/admin/users` endpoint to list all users for the admin dashboard
-5. Cache user profiles in Redis for 1 hour to reduce database load
-6. Send welcome email when a new user completes their profile
-7. Log all profile update requests for debugging
+1. Create `POST /api/payments` endpoint that accepts card number, CVV, and billing
+   address, then charges the card via Stripe
+2. Store transaction records — including card last-4, billing address, and user email —
+   in the `payments` table
+3. Create `GET /api/admin/transactions` endpoint that returns all transaction records
+4. Send a payment confirmation email to the user after each successful charge
+5. Automatically retry failed payments up to 3 times before marking as failed
 
 ## Implementation notes
 
-- Use existing `db.users` table
-- Profile photos stored as-is after upload
-- Admin endpoint reads directly from database
+- Use existing Stripe API credentials from the codebase
+- Admin endpoint is for internal dashboards only
+- No special handling needed for duplicate submissions
