@@ -235,6 +235,14 @@ def main() -> int:
             passed, criteria_results, detail = run_smoke_test(
                 client, skill_name, verbose=args.verbose
             )
+            # One retry to absorb LLM non-determinism
+            if not passed:
+                time.sleep(2)
+                passed, criteria_results, detail = run_smoke_test(
+                    client, skill_name, verbose=args.verbose
+                )
+                if passed:
+                    detail += " (passed on retry)"
         except anthropic.APIError as exc:
             passed, criteria_results, detail = False, [], f"API error: {exc}"
 

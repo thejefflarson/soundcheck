@@ -58,9 +58,9 @@ to untrusted processes before any privileged action is taken.
 ## Verification
 
 - [ ] URL scheme handlers validate host/path against an allowlist before acting
-- [ ] All exported Android components declare a `signature`-level permission
 - [ ] IPC sockets bind to Unix socket or localhost, not `0.0.0.0`
-- [ ] XPC handlers verify `effectiveUserIdentifier` or entitlements before processing
+- [ ] Electron/renderer IPC messages verify sender origin before executing commands
+- [ ] No `exec`/`eval` is called with unvalidated IPC-supplied input
 
 ## References
 
