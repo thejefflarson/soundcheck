@@ -47,7 +47,7 @@ This skill does not define its own patterns — it orchestrates other Soundcheck
    `soundcheck:rag-security` — RAG pipelines, vector stores, doc retrieval
    `soundcheck:insecure-local-storage` — credentials/tokens in local files or platform stores
    `soundcheck:ipc-security` — URL schemes, Android intents, XPC, IPC sockets
-   `soundcheck:threat-modeling` — new endpoints, pipelines, trust boundary changes
+   `soundcheck:threat-model` — new endpoints, pipelines, trust boundary changes
    `soundcheck:multi-agent-trust` — agent-to-agent auth, permission scoping, message validation
    `soundcheck:token-smuggling` — Unicode normalization, RTL override, homoglyph bypass
 

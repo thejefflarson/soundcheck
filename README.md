@@ -68,7 +68,7 @@ background on every relevant code-writing task.
 | MCP server definitions, tool schemas, tool handlers with file/shell/network access | `mcp-security` | LLM07:2025 |
 | OAuth2/OIDC flows, JWT validation, redirect URI handling, token endpoints | `oauth-implementation` | A07:2025 |
 | RAG pipelines, vector store ingestion, external document retrieval for LLM context | `rag-security` | LLM01:2025 |
-| Implementation plans for features, APIs, or components touching user data or auth | `threat-modeling` | A06:2025 |
+| Implementation plans for features, APIs, or components touching user data or auth | `threat-model` | A06:2025 |
 | Storing credentials/tokens/PII to local files, prefs stores, SQLite, or temp dirs | `insecure-local-storage` | A02:2025 |
 | URL scheme handlers, exported Android activities, IPC sockets, XPC service handlers | `ipc-security` | A01:2025 |
 

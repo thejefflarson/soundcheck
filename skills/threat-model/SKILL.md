@@ -1,5 +1,5 @@
 ---
-name: threat-modeling
+name: threat-model
 description: Use when writing an implementation plan for a new feature, API endpoint,
   data pipeline, or system component. Also invoke when a plan introduces new trust
   boundaries, handles user-supplied data, adds authentication flows, or integrates
@@ -10,22 +10,22 @@ description: Use when writing an implementation plan for a new feature, API endp
 
 ## What this checks
 
-Surfaces missing security controls at design time, before implementation begins.
-Auth gaps, unprotected data flows, and absent rate limiting are cheaper to catch in
-a plan than in code — and invisible to the reactive skills until it's too late.
+Surfaces missing controls before implementation. Auth gaps, unprotected data flows,
+and absent rate limiting are cheaper to fix in a plan than in code.
 
 ## Vulnerable patterns
 
-- Plan adds an API endpoint with no mention of authentication or authorization
-- New data flow introduces PII or credentials with no mention of encryption or access control
-- Multi-step workflow has no rate limiting, lockout, or abuse-prevention step
-- External service integration has no input validation, timeout, or error-boundary step
+- API endpoint planned with no authentication or authorization
+- Data flow with PII or credentials and no encryption or access control
+- Multi-step workflow with no rate limiting, lockout, or abuse-prevention step
+- External service integration with no input validation, timeout, or error boundary
 - Irreversible action (send email, delete record, charge card) with no confirmation step
+- Security-relevant action (login, permission change, deletion) with no audit log step
+- Operation with unbounded resource cost and no timeout or circuit breaker
 
 ## Fix immediately
 
-Before finalizing the plan, answer each question and add missing controls as
-explicit steps, then continue.
+Answer each question; add missing controls as explicit plan steps before continuing.
 
 **Security design checklist:**
 
@@ -43,22 +43,33 @@ ACCESS CONTROL
 [ ] Are permissions checked at the resource level, not just the route?
 
 ABUSE PREVENTION
-[ ] Are rate limits defined for every new user-facing endpoint?
-[ ] Does any step take an irreversible action without a confirmation gate?
+[ ] Does every user-facing endpoint have rate limits?
+[ ] Any irreversible action without a confirmation gate?
+
+REPUDIATION
+[ ] Are auth events, permission changes, and deletions logged with actor and timestamp?
+[ ] Are those logs write-only or tamper-evident?
+
+RESOURCE LIMITS
+[ ] Does each request have a compute or memory cost cap?
+[ ] Are expensive operations protected by timeouts and circuit breakers?
 
 EXTERNAL BOUNDARIES
 [ ] Are inputs from external services validated before use?
 [ ] Are timeouts and error responses defined for every external call?
+
 ```
 
 ## Verification
 
-After updating the plan, confirm:
+Confirm:
 
-- [ ] Every new endpoint has an explicit authentication and authorization step
-- [ ] Every data flow involving PII has an explicit encryption step
+- [ ] Every new endpoint has explicit authentication and authorization
+- [ ] Every PII data flow has an explicit encryption step
 - [ ] Every user-facing endpoint has an explicit rate-limiting step
 - [ ] No irreversible action proceeds without a confirmation or approval step
+- [ ] Security-relevant actions are logged with actor and timestamp
+- [ ] Expensive operations have explicit cost caps, timeouts, or circuit breakers
 
 ## References
 
