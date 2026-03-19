@@ -41,14 +41,12 @@ jobs:
       - name: Run smoke tests
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SKILL_INPUT: ${{ github.event.inputs.skill }}
+          VERBOSE_INPUT: ${{ github.event.inputs.verbose }}
         run: |
           ARGS=""
-          if [ -n "${{ github.event.inputs.skill }}" ]; then
-            ARGS="$ARGS --skill ${{ github.event.inputs.skill }}"
-          fi
-          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
-            ARGS="$ARGS --verbose"
-          fi
+          [ -n "$SKILL_INPUT" ] && ARGS="$ARGS --skill $SKILL_INPUT"
+          [ "$VERBOSE_INPUT" = "true" ] && ARGS="$ARGS --verbose"
           python scripts/smoke-test-skills.py $ARGS
 
       - name: Summarize results
@@ -83,14 +81,12 @@ jobs:
       - name: Run SecurityEval benchmark
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SKILL_INPUT: ${{ github.event.inputs.skill }}
+          LIMIT_INPUT: ${{ github.event.inputs.benchmark_limit }}
         run: |
           ARGS=""
-          if [ -n "${{ github.event.inputs.skill }}" ]; then
-            ARGS="$ARGS --skill ${{ github.event.inputs.skill }}"
-          fi
-          if [ -n "${{ github.event.inputs.benchmark_limit }}" ]; then
-            ARGS="$ARGS --limit ${{ github.event.inputs.benchmark_limit }}"
-          fi
+          [ -n "$SKILL_INPUT" ] && ARGS="$ARGS --skill $SKILL_INPUT"
+          [ -n "$LIMIT_INPUT" ] && ARGS="$ARGS --limit $LIMIT_INPUT"
           python scripts/benchmark-securityeval.py $ARGS 2>&1 | tee /tmp/benchmark-output.txt
           exit ${PIPESTATUS[0]}
 

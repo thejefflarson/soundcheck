@@ -255,6 +255,7 @@ def api_call_with_retry(
                 time.sleep(wait)
             else:
                 raise
+    raise RuntimeError(f"api_call_with_retry: all {max_retries} attempts failed")
 
 
 def run_sample(
