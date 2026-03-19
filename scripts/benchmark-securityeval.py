@@ -246,7 +246,7 @@ def api_call_with_retry(
         except anthropic.APIStatusError as exc:
             if exc.status_code == 429 and attempt < max_retries - 1:
                 retry_after = exc.response.headers.get("retry-after")
-                wait = int(retry_after) if retry_after else 30 * (2**attempt)
+                wait = int(float(retry_after)) if retry_after else 30 * (2**attempt)
                 print(f"  [rate limited, retrying in {wait}s]", flush=True)
                 time.sleep(wait)
             elif exc.status_code == 529 and attempt < max_retries - 1:

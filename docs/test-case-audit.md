@@ -38,6 +38,11 @@ Track the quality of each skill's test case. Update this file as gaps are fixed.
 | oauth-implementation | `.py` | ✅ | ✅ | ✅ | alg:none, prefix redirect_uri, no state, hardcoded secret |
 | rag-security | `.py` | ✅ | ✅ | ✅ | Arbitrary URL fetch, no length cap, undelimited context injection |
 | threat-model | `.md` | ✅ | ✅ | n/a | Plan with missing auth, no rate limits, unprotected PII flow, no confirmation gate |
+| insecure-local-storage | `.py` | ✅ | ✅ | ✅ | Plaintext credentials to file, NSUserDefaults, localStorage |
+| ipc-security | `.js` | ✅ | ✅ | ✅ | URL scheme handler with no origin check, exported intent, unauthenticated socket |
+| multi-agent-trust | `.py` | ✅ | ✅ | ✅ | No subagent identity check, inherited permissions, unsanitized task passthrough |
+| token-smuggling | `.py` | ✅ | ✅ | ✅ | RTL override, homoglyph, zero-width chars in user-supplied prompt |
+| security-review | `.py` | n/a | n/a | n/a | On-demand skill; invoked via /security-review, not pattern-matched |
 
 **Legend:** ✅ Pass  ⚠️ Needs attention  ❌ Failing
 
@@ -45,7 +50,7 @@ Track the quality of each skill's test case. Update this file as gaps are fixed.
 
 ## Open Gaps
 
-All gaps resolved as of 2026-02-26.
+All gaps resolved as of 2026-03-18.
 
 ---
 
@@ -55,3 +60,4 @@ All gaps resolved as of 2026-02-26.
 |---|---|---|
 | 2025-02-25 | Initial audit | Identified 3 gaps; fixed injection.py eval() pattern |
 | 2026-02-26 | Update | Fixed all 3 gaps; added mcp-security, oauth-implementation, rag-security |
+| 2026-03-18 | Update | Added insecure-local-storage, ipc-security, multi-agent-trust, token-smuggling, security-review |

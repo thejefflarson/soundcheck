@@ -22,34 +22,34 @@ This skill does not define its own patterns — it orchestrates other Soundcheck
 
 2. Based on what you read, invoke only relevant skills; skip any whose category is absent.
 
-   `soundcheck:injection` — SQL, shell, templates, eval with user input
-   `soundcheck:authentication-failures` — login, sessions, passwords, MFA, API keys
-   `soundcheck:cryptographic-failures` — encryption, hashing, RNG, TLS
-   `soundcheck:security-misconfiguration` — server config, CORS, debug flags, headers
-   `soundcheck:supply-chain` — package manifests, dependency pinning, CI/CD
-   `soundcheck:integrity-failures` — deserialization, pickle, update verification
-   `soundcheck:logging-failures` — logging, audit trails, security events
-   `soundcheck:exceptional-conditions` — error handlers, try/catch, error responses
-   `soundcheck:broken-access-control` — authorization, ownership, IDOR
-   `soundcheck:insecure-design` — rate limiting, business logic, state changes
-   `soundcheck:prompt-injection` — LLM prompts with user or external input
-   `soundcheck:sensitive-disclosure` — PII or credentials in LLM context
-   `soundcheck:llm-supply-chain` — loading or downloading pre-trained models
-   `soundcheck:training-data-poisoning` — fine-tuning pipelines, dataset ingestion
-   `soundcheck:model-dos` — LLM endpoints with unbounded user prompts
-   `soundcheck:insecure-output-handling` — rendering or executing LLM output
-   `soundcheck:insecure-plugin-design` — LLM tool/function definitions
-   `soundcheck:excessive-agency` — autonomous agents, LLM-triggered real-world actions
-   `soundcheck:overreliance` — LLM output as fact or gating decisions
-   `soundcheck:model-theft` — model inference APIs, extraction risk
-   `soundcheck:mcp-security` — MCP server definitions, tool handlers
-   `soundcheck:oauth-implementation` — OAuth2/OIDC flows, JWT validation
-   `soundcheck:rag-security` — RAG pipelines, vector stores, doc retrieval
-   `soundcheck:insecure-local-storage` — credentials/tokens in local files or platform stores
-   `soundcheck:ipc-security` — URL schemes, Android intents, XPC, IPC sockets
-   `soundcheck:threat-model` — new endpoints, pipelines, trust boundary changes
-   `soundcheck:multi-agent-trust` — agent-to-agent auth, permission scoping, message validation
-   `soundcheck:token-smuggling` — Unicode normalization, RTL override, homoglyph bypass
+   - `soundcheck:injection` — SQL, shell, templates, eval with user input
+   - `soundcheck:authentication-failures` — login, sessions, passwords, MFA, API keys
+   - `soundcheck:cryptographic-failures` — encryption, hashing, RNG, TLS
+   - `soundcheck:security-misconfiguration` — server config, CORS, debug flags, headers
+   - `soundcheck:supply-chain` — package manifests, dependency pinning, CI/CD
+   - `soundcheck:integrity-failures`
+   - `soundcheck:logging-failures`
+   - `soundcheck:exceptional-conditions`
+   - `soundcheck:broken-access-control` — authorization, ownership, IDOR
+   - `soundcheck:insecure-design` — rate limiting, business logic, state changes
+   - `soundcheck:prompt-injection` — LLM prompts with user or external input
+   - `soundcheck:sensitive-disclosure` — PII or credentials in LLM context
+   - `soundcheck:llm-supply-chain` — loading or downloading pre-trained models
+   - `soundcheck:training-data-poisoning` — fine-tuning pipelines, dataset ingestion
+   - `soundcheck:model-dos` — LLM endpoints with unbounded user prompts
+   - `soundcheck:insecure-output-handling` — rendering or executing LLM output
+   - `soundcheck:insecure-plugin-design` — LLM tool/function definitions
+   - `soundcheck:excessive-agency` — autonomous agents, LLM-triggered real-world actions
+   - `soundcheck:overreliance`
+   - `soundcheck:model-theft`
+   - `soundcheck:mcp-security` — MCP server definitions, tool handlers
+   - `soundcheck:oauth-implementation` — OAuth2/OIDC flows, JWT validation
+   - `soundcheck:rag-security` — RAG pipelines, vector stores, doc retrieval
+   - `soundcheck:insecure-local-storage` — plaintext secrets in local files or platform stores
+   - `soundcheck:ipc-security` — URL schemes, Android intents, XPC, IPC sockets
+   - `soundcheck:threat-model` — new endpoints, pipelines, trust boundary changes
+   - `soundcheck:multi-agent-trust` — agent-to-agent auth, permission scoping, message validation
+   - `soundcheck:token-smuggling` — Unicode normalization, RTL override, homoglyph bypass
 
 3. Output a findings table:
 

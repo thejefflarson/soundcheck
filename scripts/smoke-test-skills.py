@@ -15,7 +15,7 @@ Usage:
     python scripts/smoke-test-skills.py --verbose
     python scripts/smoke-test-skills.py --fail-fast
 
-Cost estimate: ~26 skills × 2 calls × ~800 tokens ≈ $0.30–0.60 per full run
+Cost estimate: ~29 skills × 2 calls × ~800 tokens ≈ $0.30–0.60 per full run
 """
 
 import argparse
@@ -116,7 +116,7 @@ def api_call_with_retry(
             if exc.status_code == 429 and attempt < max_retries - 1:
                 # Respect Retry-After header if present, else exponential backoff from 30s
                 retry_after = exc.response.headers.get("retry-after")
-                wait = int(retry_after) if retry_after else 30 * (2**attempt)
+                wait = int(float(retry_after)) if retry_after else 30 * (2**attempt)
                 print(f"  [rate limited, retrying in {wait}s]", flush=True)
                 time.sleep(wait)
             elif exc.status_code == 529 and attempt < max_retries - 1:
