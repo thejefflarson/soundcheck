@@ -19,8 +19,8 @@ Usage:
     python scripts/benchmark-securityeval.py --dataset /path/to/dataset.jsonl
     python scripts/benchmark-securityeval.py --skills-dir /path/to/skills
 
-Cost estimate: ~102 matched samples × 2 calls × ~600 tokens ≈ $0.15–0.30 per full run
-               Runtime: ~7 minutes at 2s inter-call delay
+Cost estimate: ~110 matched samples × 2 calls × ~600 tokens ≈ $0.15–0.30 per full run
+               Runtime: ~8 minutes at 2s inter-call delay
 """
 
 import argparse
@@ -135,9 +135,22 @@ CWE_TO_SKILL: dict[str, str] = {
     "CWE-829": "supply-chain",
     # insecure-output-handling — XSS (client-side rendering)
     "CWE-080": "insecure-output-handling",
-    # sensitive-disclosure — cleartext storage of sensitive info
+    # sensitive-disclosure — cleartext storage, sensitive info in debug output
     "CWE-312": "sensitive-disclosure",
     "CWE-313": "sensitive-disclosure",
+    "CWE-215": "sensitive-disclosure",      # sensitive info inserted into debug code
+    # broken-access-control — path traversal, unverified ownership, filename restriction
+    "CWE-283": "broken-access-control",    # unverified ownership (e.g. os.kill without auth check)
+    "CWE-641": "broken-access-control",    # improper restriction of filenames / path traversal
+    # authentication-failures — timing side channels, trusted vars from external input
+    "CWE-385": "authentication-failures",  # covert timing channel (non-constant-time comparison)
+    "CWE-454": "authentication-failures",  # external initialization of trusted auth variables
+    # exceptional-conditions — unchecked return values
+    "CWE-252": "exceptional-conditions",   # unchecked return value
+    # security-misconfiguration — wrong/undefined communication destination
+    "CWE-941": "security-misconfiguration",  # incorrectly specified destination in comm channel
+    # insecure-design — improper enforcement of behavioral workflow
+    "CWE-841": "insecure-design",          # workflow steps can be skipped or executed out of order
 }
 
 REVIEW_PROMPT = (
@@ -293,6 +306,7 @@ def run_sample(
         dict(
             model=MODEL,
             max_tokens=512,
+            temperature=0,
             system=JUDGE_SYSTEM,
             messages=[
                 {

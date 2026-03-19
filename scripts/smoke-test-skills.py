@@ -179,6 +179,7 @@ def run_smoke_test(
         dict(
             model=MODEL,
             max_tokens=1024,
+            temperature=0,
             system=JUDGE_SYSTEM,
             messages=[
                 {
