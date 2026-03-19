@@ -24,3 +24,4 @@ venv/
 .idea/
 *.swp
 *.swo
+.securityeval-cache/

@@ -11,6 +11,10 @@ on:
         description: "Print full Claude responses"
         type: boolean
         default: false
+      benchmark_limit:
+        description: "Max SecurityEval samples per skill (leave blank for all)"
+        required: false
+        default: ""
   schedule:
     # Every Monday at 09:00 UTC
     - cron: "0 9 * * 1"
@@ -57,6 +61,47 @@ jobs:
           python scripts/smoke-test-skills.py 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY || true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  securityeval-benchmark:
+    name: SecurityEval benchmark
+    runs-on: ubuntu-latest
+    # Run on weekly schedule and manual dispatch; skip the quarterly trigger
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Run SecurityEval benchmark
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.skill }}" ]; then
+            ARGS="$ARGS --skill ${{ github.event.inputs.skill }}"
+          fi
+          if [ -n "${{ github.event.inputs.benchmark_limit }}" ]; then
+            ARGS="$ARGS --limit ${{ github.event.inputs.benchmark_limit }}"
+          fi
+          python scripts/benchmark-securityeval.py $ARGS 2>&1 | tee /tmp/benchmark-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Summarize results
+        if: always()
+        run: |
+          echo "## SecurityEval Benchmark" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -20 /tmp/benchmark-output.txt >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   quarterly-threat-review:
     name: Open quarterly threat radar review issue

@@ -83,8 +83,6 @@ After rewriting, confirm:
 - [ ] Model IDs specify an exact commit SHA revision, not `"main"` or `"latest"`
 - [ ] SHA-256 checksums for model weight files are pinned in version control and verified post-download
 - [ ] Model source organization is validated against an approved allowlist
-- [ ] Model cards and licenses are reviewed before any new third-party model is integrated
-- [ ] CI model-update PRs require manual approval before merging
 
 ## References
 

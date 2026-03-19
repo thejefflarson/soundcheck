@@ -1,6 +1,6 @@
 # Soundcheck
 
-Automated OWASP security checks for Claude Code. 27 skills covering **OWASP Web Top 10:2025**
+Automated OWASP security checks for Claude Code. 29 skills covering **OWASP Web Top 10:2025**
 and **OWASP LLM Top 10:2025** that auto-invoke when Claude writes vulnerable code patterns,
 rewrite the vulnerable section inline, explain the fix, and continue with your original task.
 
@@ -15,7 +15,7 @@ claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
-After installation, all 27 skills are active in every Claude Code session. Claude will
+After installation, all 29 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
 
 **Try it without installing** (current session only):
@@ -71,12 +71,46 @@ background on every relevant code-writing task.
 | Implementation plans for features, APIs, or components touching user data or auth | `threat-model` | A06:2025 |
 | Storing credentials/tokens/PII to local files, prefs stores, SQLite, or temp dirs | `insecure-local-storage` | A02:2025 |
 | URL scheme handlers, exported Android activities, IPC sockets, XPC service handlers | `ipc-security` | A01:2025 |
+| Agent-to-agent calls, subagent spawning, multi-agent pipelines | `multi-agent-trust` | LLM08:2025 |
+| User-supplied strings to LLM with Unicode control chars, homoglyphs, RTL override | `token-smuggling` | LLM01:2025 |
 
 ### On-Demand
 
 | Command | What it does |
 |---|---|
-| `/security-review` | Full OWASP sweep — invokes all 27 skills, produces a severity-ranked findings report, rewrites Critical/High issues |
+| `/security-review` | Full OWASP sweep — invokes all 29 skills, produces a severity-ranked findings report, rewrites Critical/High/Medium issues |
+
+---
+
+## GitHub Actions
+
+### Security Review Action
+
+Runs a full Soundcheck security review against your repository, rewrites
+Critical/High/Medium findings, and opens a pull request with the changes and a
+severity-ranked findings table.
+
+```yaml
+# .github/workflows/security-review.yml
+name: Security Review
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"  # every Monday
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: thejefflarson/soundcheck-action@main
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
 
 ---
 
