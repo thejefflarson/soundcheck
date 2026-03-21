@@ -115,11 +115,19 @@ def collect_files(repo_dir: Path, max_files: int) -> list[tuple[str, str]]:
     return files
 
 
+_SOUNDCHECK_TAG = re.compile(r"<(/?)soundcheck-", re.IGNORECASE)
+
+
+def _sanitize_content(content: str) -> str:
+    """Neutralize soundcheck XML tags in file content to prevent prompt injection."""
+    return _SOUNDCHECK_TAG.sub(r"<\1soundcheck\u2011", content)
+
+
 def build_user_prompt(files: list[tuple[str, str]]) -> str:
     parts = [USER_PROMPT_HEADER]
     for rel_path, content in files:
         ext = Path(rel_path).suffix.lstrip(".")
-        parts.append(f"## {rel_path}\n```{ext}\n{content}\n```\n")
+        parts.append(f"## {rel_path}\n```{ext}\n{_sanitize_content(content)}\n```\n")
     return "\n".join(parts)
 
 
@@ -147,22 +155,39 @@ def parse_findings(response: str) -> list[dict]:
         return []
 
 
-def apply_rewrites(repo_dir: Path, rewrites: dict[str, str]) -> list[str]:
+def apply_rewrites(
+    repo_dir: Path, rewrites: dict[str, str], reviewed: set[str]
+) -> list[str]:
     """
-    Write rewritten content to disk.
-    Skips any path that escapes the repo root (path traversal guard).
+    Write rewritten content to disk using atomic writes.
+    Skips any path that:
+      - escapes the repo root (path traversal guard)
+      - was not in the set of files sent for review (allowlist)
     Returns list of relative paths successfully written.
     """
+    import tempfile
+    repo_root = repo_dir.resolve()
     written: list[str] = []
     for rel_path, content in rewrites.items():
-        target = (repo_dir / rel_path).resolve()
-        if not target.is_relative_to(repo_dir.resolve()):
-            print(f"  [skip] {rel_path} — path outside repo root", file=sys.stderr)
+        safe_rel = rel_path.replace("\r", "").replace("\n", "")
+        if safe_rel not in reviewed:
+            print(f"  [skip] {safe_rel} — not in reviewed file set", file=sys.stderr)
+            continue
+        target = (repo_dir / safe_rel).resolve()
+        if not target.is_relative_to(repo_root):
+            print(f"  [skip] {safe_rel} — path outside repo root", file=sys.stderr)
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
-        written.append(rel_path)
-        print(f"  [rewrite] {rel_path}")
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=target.parent)
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            os.replace(tmp_path, target)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
+        written.append(safe_rel)
+        print(f"  [rewrite] {safe_rel}")
     return written
 
 
@@ -277,7 +302,8 @@ def main() -> int:
           f"({len(critical_high)} Critical/High, {len(medium)} Medium) · "
           f"Rewrites: {len(rewrites)}")
 
-    rewritten = apply_rewrites(repo_dir, rewrites)
+    reviewed = {rel for rel, _ in files}
+    rewritten = apply_rewrites(repo_dir, rewrites, reviewed)
 
     summary = build_pr_body(findings, rewritten, len(files))
     Path(args.output_summary).write_text(summary, encoding="utf-8")
