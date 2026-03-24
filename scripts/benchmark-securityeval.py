@@ -48,7 +48,8 @@ SKILLS_DIR: Path = ROOT / "skills"
 # A CWE maps to the skill best positioned to detect and fix it.
 CWE_TO_SKILL: dict[str, str] = {
     # injection — SQL, shell, code execution, template, XPath
-    "CWE-020": "injection",
+    # CWE-020 (Improper Input Validation) is excluded — it is a broad parent CWE
+    # that does not map cleanly to the injection skill; specific child CWEs are mapped.
     "CWE-074": "injection",
     "CWE-077": "injection",
     "CWE-078": "injection",

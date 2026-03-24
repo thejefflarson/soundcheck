@@ -57,7 +57,8 @@ This skill does not define its own patterns — it orchestrates other Soundcheck
    |----------|-------|---------|
 
 4. Rewrite all Critical and High findings using each skill's fix pattern.
-5. Summarize: "X found. Y rewritten. Z clean. N skipped (not applicable)."
+5. Summarize with a full inventory: list each skill invoked and each skill skipped by name.
+   Example: "Skills invoked: injection, authentication-failures, supply-chain. Skipped (not applicable): prompt-injection, model-dos, llm-supply-chain, ..."
 
 ## Verification
 

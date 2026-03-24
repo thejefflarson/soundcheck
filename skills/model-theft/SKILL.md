@@ -56,9 +56,11 @@ async def infer(request: Request, payload: InferRequest,
     logger.info("infer user=%s tokens=%d", user_id, result.token_count)
     detect_extraction_pattern(user_id, payload.prompt)  # alert on grid-search probes
 
+    # IMPORTANT: Strip logprobs, raw embeddings, and weight data from all responses.
+    # Returning these values is the primary signal used for model distillation attacks.
     return {
         "text": result.text,
-        # Never return logprobs or embeddings unless the use-case explicitly requires it
+        # logprobs, embeddings, and weight data are intentionally excluded
     }
 
 def detect_extraction_pattern(user_id: str, prompt: str) -> None:

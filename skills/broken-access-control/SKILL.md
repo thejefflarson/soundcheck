@@ -53,7 +53,10 @@ def safe_fetch(url: str) -> bytes:
 ```
 
 **Why this works:** The ownership check binds the DB row to the authenticated caller
-before returning data. The SSRF allowlist prevents the server from being used as a
+before returning data. Role middleware applied at the **router level** (as a named
+middleware function passed to the route) is more reliable than inline checks: it
+cannot be accidentally omitted from a new handler, and it is visible at a glance in
+the route definition. The SSRF allowlist prevents the server from being used as a
 proxy to internal or arbitrary external hosts.
 
 ## Verification
