@@ -25,3 +25,4 @@ venv/
 *.swp
 *.swo
 .securityeval-cache/
+.realworld-cache/
