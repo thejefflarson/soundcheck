@@ -22,8 +22,7 @@ direct access to the host environment.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -65,7 +64,7 @@ Every invocation is logged.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] No secrets hardcoded — all credentials loaded from `os.environ`
 - [ ] File paths resolved and confined to an allowed base directory

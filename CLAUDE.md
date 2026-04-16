@@ -65,15 +65,14 @@ Every skill must include at least one CWE reference in the References section. C
 
 ### Action section — "Fix immediately" or "Procedure"
 
-Fix-oriented skills use `## Fix immediately` and must contain a **concrete, runnable
-code rewrite** — not advice, not pseudocode. If the fix requires a library, name it.
-If the fix requires a pattern, show the pattern. Claude will use this section to
-perform the actual rewrite.
+Fix-oriented skills use `## Fix immediately` and must contain a **concrete secure
+pattern** showing the correct approach. Skills detect and explain vulnerabilities
+but do not auto-rewrite code — they flag the issue, explain the risk, and show the
+secure pattern as a suggestion. Use `/security-cleanup` to apply fixes interactively.
 
-Analysis/orchestration skills (hotspots, threat-model, security-review) use
-`## Procedure` instead, since they produce a report rather than rewriting code. The
-procedure must be concrete: numbered or labeled steps the agent follows to generate
-the required output.
+Analysis/orchestration skills (hotspots, threat-model, security-review,
+security-cleanup) use `## Procedure` instead. The procedure must be concrete:
+numbered or labeled steps the agent follows to generate the required output.
 
 ### OWASP category
 

@@ -23,8 +23,7 @@ model behavior in ways that are difficult to detect after training completes.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -84,7 +83,7 @@ surface statistical anomalies that indicate batch poisoning.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] For every external dataset load present, files are verified against pinned checksums before use
 - [ ] Every training example passes content validation (length limits, disallowed-pattern filtering)

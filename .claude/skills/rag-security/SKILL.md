@@ -22,8 +22,7 @@ exfiltrate data, or manipulate model behavior when injected without guardrails.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -59,7 +58,7 @@ label help the model distinguish retrieved content from instructions.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] Retrieved URLs validated against an explicit domain allowlist
 - [ ] Content truncated to a fixed character or token limit before injection

@@ -22,7 +22,7 @@ Protects the ability to detect and respond to attacks. Missing security event lo
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -72,7 +72,7 @@ def deny_access(user_id: str, resource: str) -> None:
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] Every security-relevant decision point in the rewritten code (authentication outcome, authorization outcome, privileged action) emits exactly one log record — no branch silently exits without logging
 - [ ] Credential-like field names (password, passwd, token, secret, authorization, api_key, session) never appear as values in any log record — they are either omitted or replaced with a redaction marker before the log call

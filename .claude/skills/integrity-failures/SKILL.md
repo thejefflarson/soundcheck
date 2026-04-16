@@ -21,7 +21,7 @@ Protects against arbitrary code execution and tampered artifacts. Deserializing 
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -73,7 +73,7 @@ def verify_artifact(artifact: bytes, provided_sig: str) -> bytes:
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold for every relevant pattern present in the code under review (language-agnostic; criteria apply only to patterns actually present):
+Confirm the following *properties* hold for every relevant pattern present in the code under review (language-agnostic; criteria apply only to patterns actually present):
 
 - [ ] For every deserialization call present (pickle, marshal, shelve, Java `ObjectInputStream.readObject`, Ruby `Marshal.load`, PHP `unserialize`, .NET `BinaryFormatter`, etc.), the input source is a trusted local constant — never a network payload, request body, file upload, or other attacker-reachable bytes
 - [ ] For every YAML load present, the call uses a safe loader (`yaml.safe_load`, `Loader=SafeLoader`, SnakeYAML `SafeConstructor`, etc.) that disallows arbitrary type/constructor instantiation

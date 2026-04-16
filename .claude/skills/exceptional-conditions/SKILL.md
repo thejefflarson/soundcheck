@@ -21,7 +21,7 @@ Protects against information disclosure and fail-open logic. Stack traces in API
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -63,13 +63,13 @@ def safe_handler(fn):
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] No stack trace, file path, library version, exception message, or other internal detail reaches the client response body — only a generic message and opaque reference ID
 - [ ] Every catch/except/recover block takes a definite action (re-raise, log, or return a controlled error) — no silently swallowed exceptions
 - [ ] Authorization and permission failures produce a deny response (HTTP 401/403, or equivalent error return) — never a success or fall-through that grants access
-- [ ] Debug, verbose-error, or development-mode flags are disabled in production configuration (e.g. Flask `app.debug=False`, Django `DEBUG=False`, Spring `server.error.include-stacktrace=never`, Go `gin.ReleaseMode`, Rust `RUST_BACKTRACE` unset) — or not applicable for the language/framework
-- [ ] Every unhandled exception produces a server-side log entry containing a correlation ID that matches the one returned to the client
+- [ ] If the code configures a server or application entry point, debug/verbose-error flags are explicitly set to off (e.g. Flask `app.debug=False`, Spring `include-stacktrace=never`, Go `gin.ReleaseMode`). Skip this criterion for library-level code or handlers that have no configuration surface
+- [ ] Every unhandled exception produces a server-side log entry containing a correlation ID (UUID or equivalent) that matches the opaque reference returned to the client
 
 ## References
 

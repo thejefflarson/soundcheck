@@ -30,11 +30,11 @@ For each vulnerable call site, apply the appropriate control:
 - **NoSQL**: validate filter values against a strict schema before the query executes
 - **eval/exec**: remove entirely — there is no safe way to evaluate user-supplied code strings
 
-Rewrite the vulnerable call site in place, explain what changed, then continue.
+Flag the vulnerable call site, explain the risk and the correct fix pattern, then continue with the original task.
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] User-controlled values reach SQL only as bound parameters — never via string interpolation, concatenation, or format strings
 - [ ] User-controlled values reach subprocess execution only as discrete argument list elements — never via a shell string or interpolated command string

@@ -23,8 +23,7 @@ a single compromised or hallucinated step can cause unrecoverable damage.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -73,7 +72,7 @@ before dispatch, giving operators a kill-switch and full traceability.
 
 ## Verification
 
-After rewriting, confirm these properties hold regardless of language or framework:
+Confirm these properties hold regardless of language or framework:
 
 - [ ] Every destructive action taken by the agent is gated by an explicit human confirmation step
 - [ ] Agent tools enforce a path allowlist or action allowlist at the tool boundary

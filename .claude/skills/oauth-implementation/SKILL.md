@@ -23,8 +23,7 @@ account takeover and session hijacking.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -64,7 +63,7 @@ State parameter ties the callback to the initiating session.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] `algorithms=` is an explicit allowlist — never includes `"none"`
 - [ ] `redirect_uri` checked with exact match against an allowlist set

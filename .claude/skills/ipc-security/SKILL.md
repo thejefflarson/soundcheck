@@ -57,7 +57,7 @@ to untrusted processes before any privileged action is taken.
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold for every IPC surface present in the change (criteria only apply when the relevant pattern exists):
+Confirm the following *properties* hold for every IPC surface present in the change (criteria only apply when the relevant pattern exists):
 
 - [ ] For every URL scheme handler present (iOS `application(_:open:url:)`, Android `<intent-filter>` with custom scheme, Windows protocol handler): the scheme, host, and path are validated against a static allowlist before any action runs
 - [ ] For every exported Android component present (`android:exported="true"` activity, service, or `BroadcastReceiver`): the component is protected by `android:permission` with `android:protectionLevel="signature"`, or the receiver explicitly verifies the caller package, and sensitive Intent extras are validated against a schema before use

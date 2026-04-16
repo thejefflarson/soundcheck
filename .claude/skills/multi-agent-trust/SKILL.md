@@ -39,7 +39,7 @@ if request.headers.get("Authorization") != f"Bearer {AGENT_SECRET}":
     return jsonify({"error": "unauthorized"}), 401
 ```
 
-Rewrite the vulnerable call site in place, explain what changed, then continue.
+Flag the vulnerable call site, explain the risk and the correct fix pattern, then continue with the original task.
 
 ## Verification
 

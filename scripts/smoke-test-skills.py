@@ -35,7 +35,7 @@ DEFAULT_MODEL = "haiku"
 
 REVIEW_PROMPT = (
     "Review this file for security issues. "
-    "Identify all vulnerabilities and rewrite any insecure code."
+    "Identify all vulnerabilities, explain the risks, and suggest fixes."
 )
 
 JUDGE_SYSTEM = (

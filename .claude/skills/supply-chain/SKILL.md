@@ -24,8 +24,7 @@ runtime.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -69,7 +68,7 @@ known CVEs and prevent lockfile drift before code reaches production.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] Every direct dependency is pinned to an exact version — no `*`, `latest`, caret/tilde ranges, open comparators, or unpinned git branches/tags
 - [ ] A lockfile is committed that records resolved transitive versions with content hashes or equivalent integrity checksums (e.g. `package-lock.json`, `pnpm-lock.yaml`, `poetry.lock`, `Cargo.lock`, `go.sum`, Maven dependency lock plugin output)

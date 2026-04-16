@@ -23,8 +23,7 @@ backdoors that survive retraining.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -78,7 +77,7 @@ checksum verification catches tampering that occurs in transit or in the registr
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] Model IDs specify an exact commit SHA revision, not `"main"` or `"latest"`
 - [ ] SHA-256 checksums for model weight files are pinned in version control and verified post-download

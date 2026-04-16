@@ -23,8 +23,7 @@ exfiltration.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -72,7 +71,7 @@ the handler — never delegated to the LLM's judgment. Every invocation is logge
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] Every tool input is constrained at the tool boundary by some concrete mechanism — JSON Schema keywords (`maxLength`/`pattern`/`enum`/`additionalProperties: false`), a typed enum or sealed class in the method signature, runtime regex/length validation at the top of the handler, or an allowlist lookup against a static set — before the value is used
 - [ ] Authorization is enforced inside the tool handler itself against the invoking principal — not delegated to the LLM's judgment, not assumed from the caller, and not handled only by an outer framework layer

@@ -22,8 +22,7 @@ information disclosure via error pages or debug endpoints.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -56,7 +55,7 @@ middleware call. Env-var secrets are never committed to version control.
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] For every CORS configuration present in the code, if credentials are allowed then the allowed-origins value is an explicit allowlist — never a wildcard (`*`) or a reflected `Origin` header
 - [ ] For every debug/development flag present in the code (`debug=True`, `DEBUG`, `RUST_LOG=trace`, verbose error responders, etc.), the value is sourced from an environment variable or config and defaults to off in production

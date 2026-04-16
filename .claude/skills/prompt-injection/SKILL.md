@@ -23,8 +23,7 @@ bypass guardrails, or execute unintended actions.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -67,7 +66,7 @@ acted on.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] User input never appears in the `system` role message
 - [ ] Retrieved documents are wrapped in explicit delimiter tags, not concatenated raw

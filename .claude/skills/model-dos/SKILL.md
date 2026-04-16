@@ -22,8 +22,7 @@ inference costs, saturate GPU/CPU, and deny service to legitimate users.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -70,7 +69,7 @@ The token bucket rate limiter prevents a single user from monopolizing the endpo
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] Every LLM API call sets an explicit output cap on generated tokens — never left to the provider default
 - [ ] Caller-supplied prompt text is length-capped (chars, bytes, or tokens) and rejected at the handler boundary before reaching the inference client

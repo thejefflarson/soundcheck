@@ -94,9 +94,10 @@ finding/fix), optional `## Attack chains` with attacker flow in plain
 English. One summary line. Zero findings: `Security review complete.
 No findings across N hotspots.`
 
-### Stage 5 — Rewrite
+### Stage 5 — Cleanup
 
-Ask whether to apply fixes. On yes, Edit each fix.
+After rendering, suggest running `/security-cleanup` to apply fixes
+interactively. Do not auto-rewrite files.
 
 ## Verification
 

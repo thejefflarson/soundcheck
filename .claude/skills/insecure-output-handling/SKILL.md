@@ -23,8 +23,7 @@ they would sanitize raw user input.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -56,7 +55,7 @@ Parameterized queries eliminate SQL injection regardless of what the LLM produce
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] No LLM string is assigned to `innerHTML` or `dangerouslySetInnerHTML` without `DOMPurify.sanitize`
 - [ ] Shell execution uses an allowlist; `shell=True` is never passed with LLM-derived input

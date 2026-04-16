@@ -22,8 +22,7 @@ directly enable credential stuffing, account takeover, and data breach.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -60,7 +59,7 @@ provides both confidentiality and integrity; ECB provides neither.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the response:
 
 - [ ] Passwords are hashed with bcrypt, scrypt, or argon2 — never MD5, SHA1, or SHA256 alone
 - [ ] All security tokens use `secrets.token_urlsafe` / `crypto.randomBytes` — not `random` / `Math.random()`

@@ -22,8 +22,7 @@ in medical, legal, financial, or deployment contexts can cause serious harm.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Critical:** The confidence threshold and high-stakes domain list MUST appear in an
 `if/else` branch that actually diverges behavior — defining them as constants without
@@ -91,7 +90,7 @@ Irreversible pipeline steps (merge, deploy) always require a separate human trig
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] Every code path that returns or renders LLM-generated content to a user concatenates, wraps, or otherwise attaches an "AI-generated" disclaimer string — no user-facing return site emits raw model output
 - [ ] A confidence value is compared against a named threshold constant in a conditional expression whose branches actually diverge (review queue vs. direct return / proceed vs. halt) — defining the threshold without a branching comparison does not satisfy this property

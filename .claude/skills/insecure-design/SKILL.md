@@ -78,7 +78,7 @@ def require_reauth(user_id: str, password: str) -> bool:
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold for every endpoint present in the code under review (language-agnostic; criteria apply only to patterns actually present):
+Confirm the following *properties* hold for every endpoint present in the code under review (language-agnostic; criteria apply only to patterns actually present):
 
 - [ ] Every credential-accepting endpoint present (login, password reset, MFA verify, token exchange) is gated by at least one rate-limiting or lockout mechanism keyed on a caller-controlled identifier (IP, username, email, or account id) — unlimited retries are not permitted
 - [ ] Authentication failure responses do not distinguish "user not found" from "wrong password" via message text, status code, or response timing

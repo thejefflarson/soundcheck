@@ -22,8 +22,7 @@ prompts — to current users, future users, or via model extraction.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -65,7 +64,7 @@ server-side only.
 
 ## Verification
 
-After rewriting, confirm these properties hold:
+Confirm these properties hold:
 
 - [ ] No PII field (SSN, DOB, email, phone, address, health record) reaches an LLM API call site without first passing through a redaction or pseudonymization step
 - [ ] System prompts contain only constants loaded from a secrets-manager or environment-backed config, never hardcoded credential literals or interpolated secret values

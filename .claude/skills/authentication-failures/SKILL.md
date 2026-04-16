@@ -21,7 +21,7 @@ Protects identity and session integrity. Weak password storage, flawed JWT handl
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain what was wrong and what changed. Then continue with the original task.
+When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
 **Secure pattern:**
 
@@ -79,7 +79,7 @@ def verify_api_key(provided: str, stored: str) -> bool:
 
 ## Verification
 
-After rewriting, confirm the following *properties* hold (language-agnostic):
+Confirm the following *properties* hold (language-agnostic):
 
 - [ ] Passwords are stored only as the output of a memory-hard or deliberately slow KDF (bcrypt, scrypt, Argon2, PBKDF2 with high iteration count) — never as plaintext, raw fast-hash digests (MD5/SHA-1/SHA-256/SHA-512), or HMACs used as a password hash
 - [ ] JWT signing/verification keys are sourced from outside the source tree (environment variable, secret manager, KMS) AND the code enforces a minimum length/entropy check at load time — a comment asserting "must be ≥32 bytes" without a runtime check does not satisfy this
