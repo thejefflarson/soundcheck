@@ -21,105 +21,131 @@ on:
     # First Monday of Jan/Apr/Jul/Oct at 10:00 UTC — triggers quarterly threat review
     - cron: "0 10 1-7 1,4,7,10 1"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke-test:
     name: Run smoke tests
     runs-on: ubuntu-latest
-
+    timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "20"
 
-      - name: Install dependencies
-        run: pip install anthropic
+      - name: Install claude CLI
+        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
 
       - name: Run smoke tests
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SKILL_INPUT: ${{ github.event.inputs.skill }}
-          VERBOSE_INPUT: ${{ github.event.inputs.verbose }}
+          SKILL: ${{ github.event.inputs.skill }}
+          VERBOSE: ${{ github.event.inputs.verbose }}
         run: |
-          ARGS=""
-          [ -n "$SKILL_INPUT" ] && ARGS="$ARGS --skill $SKILL_INPUT"
-          [ "$VERBOSE_INPUT" = "true" ] && ARGS="$ARGS --verbose"
-          python scripts/smoke-test-skills.py $ARGS
+          set -euo pipefail
+          args=()
+          if [ -n "${SKILL:-}" ]; then args+=(--skill "$SKILL"); fi
+          if [ "${VERBOSE:-}" = "true" ]; then args+=(--verbose); fi
+          python scripts/smoke-test-skills.py "${args[@]}" 2>&1 | tee /tmp/smoke-output.txt
+          exit "${PIPESTATUS[0]}"
 
-      - name: Summarize results
+      - name: Summarize
         if: always()
         run: |
-          echo "## Smoke Test Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Model: \`claude-haiku-4-5\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          python scripts/smoke-test-skills.py 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY || true
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          {
+            echo "## Smoke Test Summary"
+            echo
+            echo "Model: \`claude-haiku-4-5\`"
+            echo
+            echo '```'
+            tail -20 /tmp/smoke-output.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   securityeval-benchmark:
     name: SecurityEval benchmark
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     # Run on weekly schedule and manual dispatch; skip the quarterly trigger
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1'
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "20"
 
-      - name: Install dependencies
-        run: pip install anthropic
+      - name: Install claude CLI
+        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
 
       - name: Run SecurityEval benchmark
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SKILL_INPUT: ${{ github.event.inputs.skill }}
-          LIMIT_INPUT: ${{ github.event.inputs.benchmark_limit }}
+          SKILL: ${{ github.event.inputs.skill }}
+          LIMIT: ${{ github.event.inputs.benchmark_limit }}
         run: |
-          ARGS=""
-          [ -n "$SKILL_INPUT" ] && ARGS="$ARGS --skill $SKILL_INPUT"
-          [ -n "$LIMIT_INPUT" ] && ARGS="$ARGS --limit $LIMIT_INPUT"
-          python scripts/benchmark-securityeval.py $ARGS 2>&1 | tee /tmp/benchmark-output.txt
-          exit ${PIPESTATUS[0]}
+          set -euo pipefail
+          args=()
+          if [ -n "${SKILL:-}" ]; then args+=(--skill "$SKILL"); fi
+          if [ -n "${LIMIT:-}" ]; then args+=(--limit "$LIMIT"); fi
+          python scripts/benchmark-securityeval.py "${args[@]}" 2>&1 | tee /tmp/benchmark-output.txt
+          exit "${PIPESTATUS[0]}"
 
-      - name: Summarize results
+      - name: Summarize
         if: always()
         run: |
-          echo "## SecurityEval Benchmark" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -20 /tmp/benchmark-output.txt >> $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## SecurityEval Benchmark"
+            echo
+            echo '```'
+            tail -20 /tmp/benchmark-output.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   quarterly-threat-review:
     name: Open quarterly threat radar review issue
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Only runs on the quarterly schedule (10:00 UTC = distinct from weekly 09:00)
     if: github.event_name == 'schedule' && github.event.schedule == '0 10 1-7 1,4,7,10 1'
-
     permissions:
       issues: write
-
     steps:
+<<<<<<< HEAD
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Open threat radar review issue
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+=======
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Open threat radar review issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+>>>>>>> 35c57fe (Overhaul CI and scripts: shared CLI wrapper, benchmark, self-review gate)
         with:
           script: |
             const now = new Date();
             const quarter = Math.ceil((now.getMonth() + 1) / 3);
             const year = now.getFullYear();
             const title = `Quarterly Threat Radar Review — Q${quarter} ${year}`;
+
+            // Dedupe: if an open issue with this title already exists, skip.
+            const existing = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title}"`,
+            });
+            if (existing.data.total_count > 0) {
+              core.info(`Issue already exists: ${existing.data.items[0].html_url}`);
+              return;
+            }
 
             const body = [
               "Automated quarterly prompt to review `docs/threat-radar.md` and triage new threats.",
@@ -134,7 +160,6 @@ jobs:
               "",
               "Close this issue when the review is complete and `threat-radar.md` has been updated.",
             ].join("\n");
-
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,

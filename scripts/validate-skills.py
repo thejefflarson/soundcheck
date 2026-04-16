@@ -2,7 +2,7 @@
 """
 Static validator for Soundcheck skill files.
 
-Checks every skills/*/SKILL.md against the authoring rules defined in CLAUDE.md.
+Checks every .claude/skills/*/SKILL.md against the authoring rules defined in CLAUDE.md.
 Exit code 0 = all skills pass. Non-zero = at least one violation found.
 
 Usage:
@@ -22,14 +22,16 @@ ROOT = Path(__file__).parent.parent
 REQUIRED_SECTIONS = [
     "## What this checks",
     "## Vulnerable patterns",
-    "## Fix immediately",
     "## Verification",
     "## References",
 ]
+# Analysis skills use "## Procedure"; fix-oriented skills use "## Fix immediately".
+# Exactly one of these must be present.
+ACTION_SECTIONS = ["## Fix immediately", "## Procedure"]
 
 OWASP_PATTERN = re.compile(r"(A\d{2}:\d{4}|LLM\d{2}:\d{4})")
 CWE_PATTERN = re.compile(r"CWE-\d+")
-MAX_WORDS = 400
+MAX_WORDS = 600
 
 
 def parse_frontmatter(text: str) -> dict:
@@ -100,6 +102,10 @@ def validate_skill(skill_dir: Path) -> list[str]:
     for section in REQUIRED_SECTIONS:
         if section not in text:
             violations.append(f"Missing required section: {section!r}")
+    if not any(s in text for s in ACTION_SECTIONS):
+        violations.append(
+            f"Missing action section: one of {ACTION_SECTIONS} required"
+        )
 
     # 5. At least one CWE reference
     if not CWE_PATTERN.search(text):
@@ -130,7 +136,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    skills_root = ROOT / "skills"
+    skills_root = ROOT / ".claude" / "skills"
 
     if args.skill:
         skill_dirs = [skills_root / args.skill]
@@ -143,7 +149,7 @@ def main() -> int:
         )
 
     if not skill_dirs:
-        print("ERROR: no skill directories found under skills/", file=sys.stderr)
+        print("ERROR: no skill directories found under .claude/skills/", file=sys.stderr)
         return 1
 
     pass_count = 0

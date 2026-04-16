@@ -11,45 +11,41 @@ For each sample:
   3. Asks a judge to evaluate: was the vulnerability detected? was a fix provided?
   4. Aggregates detection and fix rates per skill
 
+Shells out to `claude` CLI — no API key needed.
+
 Usage:
     python scripts/benchmark-securityeval.py
     python scripts/benchmark-securityeval.py --skill injection
     python scripts/benchmark-securityeval.py --verbose
     python scripts/benchmark-securityeval.py --limit 10
-    python scripts/benchmark-securityeval.py --dataset /path/to/dataset.jsonl
-    python scripts/benchmark-securityeval.py --skills-dir /path/to/skills
-
-Cost estimate: ~110 matched samples × 2 calls × ~600 tokens ≈ $0.15–0.30 per full run
-               Runtime: ~8 minutes at 2s inter-call delay
+    python scripts/benchmark-securityeval.py --model sonnet
 """
 
 import argparse
 import json
-import os
 import re
+import subprocess
 import sys
 import time
 import urllib.request
 from pathlib import Path
 
-import anthropic
+sys.path.insert(0, str(Path(__file__).parent))
+from _claude_cli import run_claude  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
-MODEL = "claude-haiku-4-5"
+DEFAULT_MODEL = "haiku"
 DATASET_URL = (
     "https://raw.githubusercontent.com/s2e-lab/SecurityEval/master/dataset.jsonl"
 )
 CACHE_PATH = ROOT / ".securityeval-cache" / "dataset.jsonl"
 
 # Overridden by --skills-dir; resolved in main() and threaded through via this global.
-SKILLS_DIR: Path = ROOT / "skills"
+SKILLS_DIR: Path = ROOT / ".claude" / "skills"
 
 # Maps SecurityEval CWE IDs to Soundcheck skill names.
-# A CWE maps to the skill best positioned to detect and fix it.
 CWE_TO_SKILL: dict[str, str] = {
     # injection — SQL, shell, code execution, template, XPath
-    # CWE-020 (Improper Input Validation) is excluded — it is a broad parent CWE
-    # that does not map cleanly to the injection skill; specific child CWEs are mapped.
     "CWE-074": "injection",
     "CWE-077": "injection",
     "CWE-078": "injection",
@@ -139,19 +135,19 @@ CWE_TO_SKILL: dict[str, str] = {
     # sensitive-disclosure — cleartext storage, sensitive info in debug output
     "CWE-312": "sensitive-disclosure",
     "CWE-313": "sensitive-disclosure",
-    "CWE-215": "sensitive-disclosure",      # sensitive info inserted into debug code
+    "CWE-215": "sensitive-disclosure",
     # broken-access-control — path traversal, unverified ownership, filename restriction
-    "CWE-283": "broken-access-control",    # unverified ownership (e.g. os.kill without auth check)
-    "CWE-641": "broken-access-control",    # improper restriction of filenames / path traversal
+    "CWE-283": "broken-access-control",
+    "CWE-641": "broken-access-control",
     # authentication-failures — timing side channels, trusted vars from external input
-    "CWE-385": "authentication-failures",  # covert timing channel (non-constant-time comparison)
-    "CWE-454": "authentication-failures",  # external initialization of trusted auth variables
+    "CWE-385": "authentication-failures",
+    "CWE-454": "authentication-failures",
     # exceptional-conditions — unchecked return values
-    "CWE-252": "exceptional-conditions",   # unchecked return value
+    "CWE-252": "exceptional-conditions",
     # security-misconfiguration — wrong/undefined communication destination
-    "CWE-941": "security-misconfiguration",  # incorrectly specified destination in comm channel
+    "CWE-941": "security-misconfiguration",
     # insecure-design — improper enforcement of behavioral workflow
-    "CWE-841": "insecure-design",          # workflow steps can be skipped or executed out of order
+    "CWE-841": "insecure-design",
 }
 
 REVIEW_PROMPT = (
@@ -199,6 +195,29 @@ Output JSON only:
   ]
 }}"""
 
+
+# ---------------------------------------------------------------------------
+# Claude CLI
+# ---------------------------------------------------------------------------
+
+def claude_call(
+    user_prompt: str,
+    system_prompt: str,
+    model: str = DEFAULT_MODEL,
+    timeout: int = 300,
+) -> str:
+    return run_claude(
+        user_prompt,
+        system_prompt,
+        model=model,
+        disable_tools=True,
+        timeout=timeout,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dataset
+# ---------------------------------------------------------------------------
 
 def fetch_dataset(dataset_path: Path | None) -> list[dict]:
     """Load SecurityEval from a local file, cache, or GitHub."""
@@ -251,75 +270,36 @@ def extract_json(text: str) -> str:
     return bare.group(0) if bare else text
 
 
-def api_call_with_retry(
-    client: anthropic.Anthropic, kwargs: dict, max_retries: int = 5
-) -> anthropic.types.Message:
-    for attempt in range(max_retries):
-        try:
-            return client.messages.create(**kwargs)
-        except anthropic.APIStatusError as exc:
-            if exc.status_code == 429 and attempt < max_retries - 1:
-                retry_after = exc.response.headers.get("retry-after")
-                wait = int(float(retry_after)) if retry_after else 30 * (2**attempt)
-                print(f"  [rate limited, retrying in {wait}s]", flush=True)
-                time.sleep(wait)
-            elif exc.status_code == 529 and attempt < max_retries - 1:
-                wait = 2**attempt
-                print(f"  [overloaded, retrying in {wait}s]", flush=True)
-                time.sleep(wait)
-            else:
-                raise
-    raise RuntimeError(f"api_call_with_retry: all {max_retries} attempts failed")
-
+# ---------------------------------------------------------------------------
+# Benchmark
+# ---------------------------------------------------------------------------
 
 def run_sample(
-    client: anthropic.Anthropic,
     skill_content: str,
     skill_name: str,
     sample: dict,
+    model: str,
     verbose: bool,
 ) -> dict:
-    """
-    Run one SecurityEval sample through the skill and judge.
-
-    Returns a result dict with: id, cwe, passed, criteria.
-    """
+    """Run one SecurityEval sample through the skill and judge."""
     cwe = extract_cwe(sample["ID"])
     code = sample["Insecure_code"]
 
-    review_resp = api_call_with_retry(
-        client,
-        dict(
-            model=MODEL,
-            max_tokens=2048,
-            system=skill_content,
-            messages=[{"role": "user", "content": f"{REVIEW_PROMPT}\n\n```python\n{code}\n```"}],
-        ),
+    review_text = claude_call(
+        f"{REVIEW_PROMPT}\n\n```python\n{code}\n```",
+        skill_content,
+        model=model,
     )
-    review_text = review_resp.content[0].text
 
     if verbose:
         print(f"\n  [review] {sample['ID']}")
         print(f"  {review_text[:300]}{'...' if len(review_text) > 300 else ''}")
 
-    judge_resp = api_call_with_retry(
-        client,
-        dict(
-            model=MODEL,
-            max_tokens=512,
-            temperature=0,
-            system=JUDGE_SYSTEM,
-            messages=[
-                {
-                    "role": "user",
-                    "content": JUDGE_PROMPT.format(
-                        cwe=cwe, code=code, response=review_text
-                    ),
-                }
-            ],
-        ),
+    judge_text = claude_call(
+        JUDGE_PROMPT.format(cwe=cwe, code=code, response=review_text),
+        JUDGE_SYSTEM,
+        model=model,
     )
-    judge_text = judge_resp.content[0].text
 
     if verbose:
         print(f"  [judge]  {judge_text}")
@@ -338,18 +318,13 @@ def run_sample(
 
 
 def run_skill_benchmark(
-    client: anthropic.Anthropic,
     skill_name: str,
     samples: list[dict],
+    model: str,
     limit: int | None,
     verbose: bool,
 ) -> dict:
-    """
-    Benchmark one skill against all its SecurityEval samples.
-
-    Returns a summary dict with: skill, total, passed, failed, detection_rate,
-    fix_rate, results.
-    """
+    """Benchmark one skill against all its SecurityEval samples."""
     skill_path = SKILLS_DIR / skill_name / "SKILL.md"
     if not skill_path.exists():
         return {"skill": skill_name, "error": "SKILL.md not found"}
@@ -363,7 +338,16 @@ def run_skill_benchmark(
     for i, sample in enumerate(samples):
         if i > 0:
             time.sleep(2)
-        result = run_sample(client, skill_content, skill_name, sample, verbose)
+        try:
+            result = run_sample(skill_content, skill_name, sample, model, verbose)
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            result = {
+                "id": sample["ID"],
+                "cwe": extract_cwe(sample["ID"]),
+                "passed": False,
+                "criteria": [],
+                "error": str(exc)[:200],
+            }
         results.append(result)
 
     total = len(results)
@@ -416,7 +400,7 @@ def print_skill_summary(summary: dict, verbose: bool) -> None:
 
     if verbose or passed < total:
         for r in summary["results"]:
-            mark = "✓" if r["passed"] else "✗"
+            mark = "Y" if r["passed"] else "X"
             failed_criteria = [
                 c["criterion"] for c in r["criteria"] if not c.get("passed")
             ]
@@ -433,22 +417,18 @@ def main() -> int:
     parser.add_argument(
         "--limit", type=int, metavar="N", help="Max samples per skill"
     )
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Claude model (default: {DEFAULT_MODEL})")
     parser.add_argument(
         "--verbose", action="store_true", help="Print review and judge responses"
     )
     parser.add_argument(
         "--skills-dir", metavar="PATH",
-        help="Directory containing skill subdirectories (default: repo skills/)"
+        help="Directory containing skill subdirectories (default: repo .claude/skills/)"
     )
     parser.add_argument(
         "--unmapped", action="store_true", help="List SecurityEval CWEs with no skill mapping and exit"
     )
     args = parser.parse_args()
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
-        return 1
 
     samples = fetch_dataset(Path(args.dataset) if args.dataset else None)
     print(f"Loaded {len(samples)} SecurityEval samples\n")
@@ -480,10 +460,8 @@ def main() -> int:
     else:
         skill_names = sorted(groups)
 
-    client = anthropic.Anthropic(api_key=api_key)
-
     mapped_total = sum(len(groups[s]) for s in skill_names)
-    print(f"SecurityEval Benchmark — {len(skill_names)} skill(s), {mapped_total} samples — model: {MODEL}")
+    print(f"SecurityEval Benchmark — {len(skill_names)} skill(s), {mapped_total} samples — model: {args.model}")
     if args.limit:
         print(f"(capped at {args.limit} samples per skill)")
     print()
@@ -494,9 +472,9 @@ def main() -> int:
             time.sleep(1)
         samples_for_skill = groups[skill_name]
         cwes = sorted({extract_cwe(s["ID"]) for s in samples_for_skill})
-        print(f"▶ {skill_name}  [{', '.join(cwes)}]  {len(samples_for_skill)} sample(s)")
+        print(f"> {skill_name}  [{', '.join(cwes)}]  {len(samples_for_skill)} sample(s)")
         summary = run_skill_benchmark(
-            client, skill_name, samples_for_skill, args.limit, args.verbose
+            skill_name, samples_for_skill, args.model, args.limit, args.verbose
         )
         print_skill_summary(summary, args.verbose)
         all_summaries.append(summary)

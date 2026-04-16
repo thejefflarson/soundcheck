@@ -8,43 +8,42 @@ open-source applications at pinned commits:
 - OWASP PyGoat (Python/Django)          — github.com/adeyosemanputra/pygoat
 
 Files are fetched via the GitHub raw API and cached locally. The same
-LLM-as-judge pattern used in benchmark-securityeval.py is applied:
-each file is reviewed with the relevant skill as context, then a judge
-evaluates DETECTION, CATEGORIZATION, and FIX.
+LLM-as-judge pattern is applied: each file is reviewed with the relevant
+skill as context, then a judge evaluates DETECTION, CATEGORIZATION, and FIX.
+
+Shells out to `claude` CLI — no API key needed.
 
 Usage:
     python scripts/benchmark-realworld.py
     python scripts/benchmark-realworld.py --skill injection
     python scripts/benchmark-realworld.py --verbose
     python scripts/benchmark-realworld.py --no-cache
-
-Cost estimate: ~20 files × 2 calls × ~1000 tokens ≈ $0.05–0.10 per full run
-               Runtime: ~3 minutes at 2s inter-call delay
+    python scripts/benchmark-realworld.py --model sonnet
 """
 
 import argparse
 import json
-import os
 import re
+import subprocess
 import sys
 import time
 import urllib.request
 from pathlib import Path
 
-import anthropic
+sys.path.insert(0, str(Path(__file__).parent))
+from _claude_cli import run_claude  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
-MODEL = "claude-haiku-4-5"
+DEFAULT_MODEL = "haiku"
 CACHE_DIR = ROOT / ".realworld-cache"
 MAX_FILE_BYTES = 50_000  # truncate files > 50 KB
 
 # Overridden by --skills-dir; resolved in main().
-SKILLS_DIR: Path = ROOT / "skills"
+SKILLS_DIR: Path = ROOT / ".claude" / "skills"
 
 # Files from intentionally vulnerable applications, pinned to specific commits.
-# Each entry maps a single file to the Soundcheck skill best positioned to catch it.
 MANIFEST = [
-    # ── OWASP Juice Shop (TypeScript/Node.js) ────────────────────────────
+    # -- OWASP Juice Shop (TypeScript/Node.js) --------------------------------
     # Commit: 8262a6a — Mar 23, 2026
     {
         "id": "juice-shop/routes/search.ts",
@@ -126,7 +125,7 @@ MANIFEST = [
         "skill": "broken-access-control",
         "description": "Path traversal — log file served with only a forward-slash presence check",
     },
-    # ── OWASP PyGoat (Python/Django) ─────────────────────────────────────
+    # -- OWASP PyGoat (Python/Django) ------------------------------------------
     # Commit: 2fb0c60 — Feb 1, 2026
     {
         "id": "pygoat/introduction/views.py",
@@ -199,6 +198,29 @@ Output JSON only:
 }}"""
 
 
+# ---------------------------------------------------------------------------
+# Claude CLI
+# ---------------------------------------------------------------------------
+
+def claude_call(
+    user_prompt: str,
+    system_prompt: str,
+    model: str = DEFAULT_MODEL,
+    timeout: int = 300,
+) -> str:
+    return run_claude(
+        user_prompt,
+        system_prompt,
+        model=model,
+        disable_tools=True,
+        timeout=timeout,
+    )
+
+
+# ---------------------------------------------------------------------------
+# File fetching
+# ---------------------------------------------------------------------------
+
 def raw_url(repo: str, commit: str, path: str) -> str:
     return f"https://raw.githubusercontent.com/{repo}/{commit}/{path}"
 
@@ -235,68 +257,37 @@ def extract_json(text: str) -> str:
     return bare.group(0) if bare else text
 
 
-def api_call_with_retry(
-    client: anthropic.Anthropic, kwargs: dict, max_retries: int = 5
-) -> anthropic.types.Message:
-    for attempt in range(max_retries):
-        try:
-            return client.messages.create(**kwargs)
-        except anthropic.APIStatusError as exc:
-            if exc.status_code == 429 and attempt < max_retries - 1:
-                retry_after = exc.response.headers.get("retry-after")
-                wait = int(float(retry_after)) if retry_after else 30 * (2 ** attempt)
-                print(f"  [rate limited, retrying in {wait}s]", flush=True)
-                time.sleep(wait)
-            elif exc.status_code == 529 and attempt < max_retries - 1:
-                wait = 2 ** attempt
-                print(f"  [overloaded, retrying in {wait}s]", flush=True)
-                time.sleep(wait)
-            else:
-                raise
-    raise RuntimeError(f"api_call_with_retry: all {max_retries} attempts failed")
-
+# ---------------------------------------------------------------------------
+# Benchmark
+# ---------------------------------------------------------------------------
 
 def run_entry(
-    client: anthropic.Anthropic,
     skill_content: str,
     entry: dict,
     code: str,
+    model: str,
     verbose: bool,
 ) -> dict:
     """Run one manifest entry through the skill and judge."""
-    review_resp = api_call_with_retry(
-        client,
-        dict(
-            model=MODEL,
-            max_tokens=2048,
-            system=skill_content,
-            messages=[{"role": "user", "content": f"{REVIEW_PROMPT}\n\n```\n{code}\n```"}],
-        ),
+    review_text = claude_call(
+        f"{REVIEW_PROMPT}\n\n```\n{code}\n```",
+        skill_content,
+        model=model,
     )
-    review_text = review_resp.content[0].text
 
     if verbose:
         print(f"\n  [review]\n  {review_text[:400]}{'...' if len(review_text) > 400 else ''}")
 
-    judge_resp = api_call_with_retry(
-        client,
-        dict(
-            model=MODEL,
-            max_tokens=512,
-            temperature=0,
-            system=JUDGE_SYSTEM,
-            messages=[{
-                "role": "user",
-                "content": JUDGE_PROMPT.format(
-                    skill=entry["skill"],
-                    description=entry["description"],
-                    code=code,
-                    response=review_text,
-                ),
-            }],
+    judge_text = claude_call(
+        JUDGE_PROMPT.format(
+            skill=entry["skill"],
+            description=entry["description"],
+            code=code,
+            response=review_text,
         ),
+        JUDGE_SYSTEM,
+        model=model,
     )
-    judge_text = judge_resp.content[0].text
 
     if verbose:
         print(f"  [judge] {judge_text}")
@@ -315,9 +306,9 @@ def run_entry(
 
 
 def run_skill_benchmark(
-    client: anthropic.Anthropic,
     skill_name: str,
     entries: list[dict],
+    model: str,
     no_cache: bool,
     verbose: bool,
 ) -> dict:
@@ -343,7 +334,16 @@ def run_skill_benchmark(
             })
             continue
 
-        result = run_entry(client, skill_content, entry, code, verbose)
+        try:
+            result = run_entry(skill_content, entry, code, model, verbose)
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            result = {
+                "id": entry["id"],
+                "skill": skill_name,
+                "passed": False,
+                "criteria": [],
+                "error": str(exc)[:200],
+            }
         results.append(result)
 
     total = len(results)
@@ -388,7 +388,7 @@ def print_skill_summary(summary: dict, verbose: bool) -> None:
 
     if verbose or passed < total:
         for r in summary["results"]:
-            mark = "✓" if r.get("passed") else "✗"
+            mark = "Y" if r.get("passed") else "X"
             failed_criteria = [
                 c["criterion"] for c in r.get("criteria", []) if not c.get("passed")
             ]
@@ -402,18 +402,14 @@ def main() -> int:
         description="Real-world validation benchmark for Soundcheck skills"
     )
     parser.add_argument("--skill", metavar="NAME", help="Benchmark a single skill")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Claude model (default: {DEFAULT_MODEL})")
     parser.add_argument("--verbose", action="store_true", help="Print review and judge responses")
     parser.add_argument("--no-cache", action="store_true", help="Re-download files even if cached")
     parser.add_argument(
         "--skills-dir", metavar="PATH",
-        help="Directory containing skill subdirectories (default: repo skills/)",
+        help="Directory containing skill subdirectories (default: repo .claude/skills/)",
     )
     args = parser.parse_args()
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
-        return 1
 
     global SKILLS_DIR
     if args.skills_dir:
@@ -436,12 +432,11 @@ def main() -> int:
     else:
         skill_names = sorted(groups)
 
-    client = anthropic.Anthropic(api_key=api_key)
     total_files = sum(len(groups[s]) for s in skill_names)
 
     print(f"\nSoundcheck Real-World Benchmark — {len(skill_names)} skill(s), {total_files} files")
     print(f"Sources: OWASP Juice Shop (TypeScript), OWASP PyGoat (Python)")
-    print(f"Model: {MODEL}\n")
+    print(f"Model: {args.model}\n")
 
     all_summaries = []
     for i, skill_name in enumerate(skill_names):
@@ -449,8 +444,8 @@ def main() -> int:
             time.sleep(1)
         entries = groups[skill_name]
         sources = sorted({e["repo"].split("/")[0] for e in entries})
-        print(f"▶ {skill_name}  [{', '.join(sources)}]  {len(entries)} file(s)")
-        summary = run_skill_benchmark(client, skill_name, entries, args.no_cache, args.verbose)
+        print(f"> {skill_name}  [{', '.join(sources)}]  {len(entries)} file(s)")
+        summary = run_skill_benchmark(skill_name, entries, args.model, args.no_cache, args.verbose)
         print_skill_summary(summary, args.verbose)
         all_summaries.append(summary)
         print()

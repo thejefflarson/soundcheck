@@ -1,0 +1,47 @@
+name: Soundcheck Self-Review
+
+# Runs the Soundcheck security review against this repo on every PR and
+# fails the check on any Critical or High finding. This is the "fixit"
+# gate: if Soundcheck finds a real bug in its own code, the PR can't
+# merge until it's fixed.
+
+on:
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  self-review:
+    name: Run Soundcheck against itself
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "20"
+
+      - name: Install claude CLI
+        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
+
+      - name: Run security review (read-only)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python scripts/security-review-action.py \
+            --repo-dir . \
+            --output-summary /tmp/self-review-summary.md
+
+      - name: Append to job summary
+        if: always()
+        run: cat /tmp/self-review-summary.md >> "$GITHUB_STEP_SUMMARY" || true

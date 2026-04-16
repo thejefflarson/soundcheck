@@ -9,27 +9,29 @@ For each skill:
   4. Asks a judge to evaluate the response against those criteria
   5. Reports pass/fail per criterion
 
+Shells out to `claude` CLI — no API key needed.
+
 Usage:
     python scripts/smoke-test-skills.py
     python scripts/smoke-test-skills.py --skill injection
     python scripts/smoke-test-skills.py --verbose
     python scripts/smoke-test-skills.py --fail-fast
-
-Cost estimate: ~29 skills × 2 calls × ~800 tokens ≈ $0.30–0.60 per full run
+    python scripts/smoke-test-skills.py --model sonnet
 """
 
 import argparse
 import json
-import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-import anthropic
+sys.path.insert(0, str(Path(__file__).parent))
+from _claude_cli import run_claude  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
-MODEL = "claude-haiku-4-5"
+DEFAULT_MODEL = "haiku"
 
 REVIEW_PROMPT = (
     "Review this file for security issues. "
@@ -70,14 +72,34 @@ Output JSON only:
 }}"""
 
 
-def find_test_case(skill_name: str) -> Path | None:
+def claude_call(
+    user_prompt: str,
+    system_prompt: str,
+    model: str = DEFAULT_MODEL,
+    timeout: int = 300,
+) -> str:
+    return run_claude(
+        user_prompt,
+        system_prompt,
+        model=model,
+        disable_tools=True,
+        timeout=timeout,
+    )
+
+
+def find_test_cases(skill_name: str) -> list[Path]:
+    """Return every test case file for a skill, sorted by extension.
+
+    A skill may have multiple language variants (e.g. injection.py,
+    injection.java, injection.go). Each is smoke-tested independently so
+    language-specific API patterns actually get exercised.
+    """
     test_dir = ROOT / "docs" / "test-cases"
-    matches = list(test_dir.glob(f"{skill_name}.*"))
-    return matches[0] if matches else None
+    return sorted(test_dir.glob(f"{skill_name}.*"))
 
 
 def find_all_skills() -> list[str]:
-    skills_dir = ROOT / "skills"
+    skills_dir = ROOT / ".claude" / "skills"
     return sorted(p.name for p in skills_dir.iterdir() if (p / "SKILL.md").exists())
 
 
@@ -106,43 +128,18 @@ def extract_json(text: str) -> str:
     return bare.group(0) if bare else text
 
 
-def api_call_with_retry(
-    client: anthropic.Anthropic, kwargs: dict, max_retries: int = 5
-) -> anthropic.types.Message:
-    for attempt in range(max_retries):
-        try:
-            return client.messages.create(**kwargs)
-        except anthropic.APIStatusError as exc:
-            if exc.status_code == 429 and attempt < max_retries - 1:
-                # Respect Retry-After header if present, else exponential backoff from 30s
-                retry_after = exc.response.headers.get("retry-after")
-                wait = int(float(retry_after)) if retry_after else 30 * (2**attempt)
-                print(f"  [rate limited, retrying in {wait}s]", flush=True)
-                time.sleep(wait)
-            elif exc.status_code == 529 and attempt < max_retries - 1:
-                wait = 2**attempt
-                print(f"  [overloaded, retrying in {wait}s]", flush=True)
-                time.sleep(wait)
-            else:
-                raise
-    raise RuntimeError(f"api_call_with_retry: all {max_retries} attempts failed")
-
-
 def run_smoke_test(
-    client: anthropic.Anthropic,
     skill_name: str,
+    test_case: Path,
+    model: str,
     verbose: bool = False,
 ) -> tuple[bool, list[dict], str]:
     """
-    Run a single LLM-as-judge smoke test.
+    Run a single LLM-as-judge smoke test on one (skill, test case) pair.
 
     Returns (passed, criteria_results, detail_message).
     """
-    test_case = find_test_case(skill_name)
-    if test_case is None:
-        return False, [], "no test case found"
-
-    skill_path = ROOT / "skills" / skill_name / "SKILL.md"
+    skill_path = ROOT / ".claude" / "skills" / skill_name / "SKILL.md"
     if not skill_path.exists():
         return False, [], "no SKILL.md found"
 
@@ -155,18 +152,11 @@ def run_smoke_test(
     prompt = extract_test_prompt(code) or REVIEW_PROMPT
 
     # Step 1: Claude reviews the test case with the skill loaded as context
-    review_resp = api_call_with_retry(
-        client,
-        dict(
-            model=MODEL,
-            max_tokens=2048,
-            system=skill_content,
-            messages=[
-                {"role": "user", "content": f"{prompt}\n\n```\n{code}\n```"}
-            ],
-        ),
+    review_text = claude_call(
+        f"{prompt}\n\n```\n{code}\n```",
+        skill_content,
+        model=model,
     )
-    review_text = review_resp.content[0].text
 
     if verbose:
         print(f"\n--- Review: {skill_name} ---")
@@ -174,27 +164,16 @@ def run_smoke_test(
 
     # Step 2: Judge evaluates the response against the verification criteria
     criteria_block = "\n".join(f"- {c}" for c in criteria)
-    judge_resp = api_call_with_retry(
-        client,
-        dict(
-            model=MODEL,
-            max_tokens=1024,
-            temperature=0,
-            system=JUDGE_SYSTEM,
-            messages=[
-                {
-                    "role": "user",
-                    "content": JUDGE_PROMPT.format(
-                        skill_name=skill_name,
-                        criteria=criteria_block,
-                        code=code,
-                        response=review_text,
-                    ),
-                }
-            ],
+    judge_text = claude_call(
+        JUDGE_PROMPT.format(
+            skill_name=skill_name,
+            criteria=criteria_block,
+            code=code,
+            response=review_text,
         ),
+        JUDGE_SYSTEM,
+        model=model,
     )
-    judge_text = judge_resp.content[0].text
 
     if verbose:
         print(f"\n--- Judge: {skill_name} ---")
@@ -222,6 +201,7 @@ def main() -> int:
         description="LLM-as-judge smoke tests for Soundcheck skills"
     )
     parser.add_argument("--skill", metavar="NAME", help="Test a single skill by name")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Claude model (default: {DEFAULT_MODEL})")
     parser.add_argument(
         "--verbose", action="store_true", help="Print full review and judge responses"
     )
@@ -230,42 +210,67 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY environment variable not set", file=sys.stderr)
-        return 1
-
-    client = anthropic.Anthropic(api_key=api_key)
     skill_names = [args.skill] if args.skill else find_all_skills()
+
+    # Expand each skill to one row per test-case variant.
+    cases: list[tuple[str, Path]] = []
+    missing: list[str] = []
+    for skill_name in skill_names:
+        found = find_test_cases(skill_name)
+        if found:
+            cases.extend((skill_name, tc) for tc in found)
+        else:
+            missing.append(skill_name)
 
     pass_count = 0
     fail_count = 0
-    col_width = max(len(n) for n in skill_names) + 2
+    label_width = max(
+        (len(f"{s} [{tc.suffix.lstrip('.')}]") for s, tc in cases),
+        default=40,
+    ) + 2
 
-    print(f"\nSoundcheck Smoke Tests — {len(skill_names)} skill(s) — model: {MODEL}\n")
-    print(f"{'Skill':<{col_width}} {'Status':<8}  Detail")
-    print("-" * 72)
+    print(f"\nSoundcheck Smoke Tests — {len(cases)} case(s) across "
+          f"{len(skill_names)} skill(s) — model: {args.model}\n")
+    print(f"{'Skill [lang]':<{label_width}} {'Status':<8}  Detail")
+    print("-" * 80)
 
-    for i, skill_name in enumerate(skill_names):
+    for name in missing:
+        print(f"{name:<{label_width}} {'SKIP':<8}  no test case found")
+
+    # Bail out if three consecutive cases fail at the CLI boundary with
+    # the same infrastructure error (e.g. expired auth, CLI not installed,
+    # rate-limiting) instead of burning 90 minutes reporting the same
+    # failure over and over.
+    consecutive_cli_errors = 0
+    aborted = False
+
+    for i, (skill_name, test_case) in enumerate(cases):
         if i > 0:
             time.sleep(1)
+        label = f"{skill_name} [{test_case.suffix.lstrip('.')}]"
         try:
             passed, criteria_results, detail = run_smoke_test(
-                client, skill_name, verbose=args.verbose
+                skill_name, test_case, model=args.model, verbose=args.verbose,
             )
-        except anthropic.APIError as exc:
-            passed, criteria_results, detail = False, [], f"API error: {exc}"
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            passed, criteria_results, detail = False, [], f"error: {exc}"
 
         status = "PASS" if passed else "FAIL"
-        print(f"{skill_name:<{col_width}} {status:<8}  {detail}")
+        print(f"{label:<{label_width}} {status:<8}  {detail}")
 
-        # On failure, show which criteria didn't pass and why
         if not passed and criteria_results:
             for c in criteria_results:
                 if not c.get("passed"):
-                    print(f"  {'':>{col_width}}           ✗ {c['criterion']}")
+                    print(f"  {'':>{label_width}}         X {c['criterion']}")
                     if c.get("evidence"):
-                        print(f"  {'':>{col_width}}             {c['evidence']}")
+                        print(f"  {'':>{label_width}}           {c['evidence']}")
+
+        # Track infra errors (empty-criteria failures from non-zero claude exit)
+        is_cli_error = not passed and not criteria_results and detail.startswith("error:")
+        if is_cli_error:
+            consecutive_cli_errors += 1
+        else:
+            consecutive_cli_errors = 0
 
         if passed:
             pass_count += 1
@@ -274,10 +279,21 @@ def main() -> int:
             if args.fail_fast:
                 print("\nStopping on first failure (--fail-fast)")
                 break
+            if consecutive_cli_errors >= 3:
+                print(
+                    "\nABORT: 3 consecutive CLI errors with empty output — "
+                    "likely expired auth or broken `claude` CLI. Run "
+                    "`claude /login` and retry."
+                )
+                aborted = True
+                break
 
     print("-" * 72)
-    print(f"\nResults: {pass_count} passed, {fail_count} failed\n")
+    suffix = " (aborted)" if aborted else ""
+    print(f"\nResults: {pass_count} passed, {fail_count} failed{suffix}\n")
 
+    if aborted:
+        return 2
     return 0 if fail_count == 0 else 1
 
 
