@@ -1,6 +1,6 @@
 # Soundcheck
 
-Automated OWASP security checks for Claude Code. 29 skills covering **OWASP Web Top 10:2025**
+Automated OWASP security checks for Claude Code. 30 skills covering **OWASP Web Top 10:2025**
 and **OWASP LLM Top 10:2025** that auto-invoke when Claude writes vulnerable code patterns,
 rewrite the vulnerable section inline, explain the fix, and continue with your original task.
 
@@ -15,7 +15,7 @@ claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
-After installation, all 29 skills are active in every Claude Code session. Claude will
+After installation, all 30 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
 
 **Try it without installing** (current session only):
@@ -78,39 +78,64 @@ background on every relevant code-writing task.
 
 | Command | What it does |
 |---|---|
-| `/security-review` | Full OWASP sweep — invokes all 29 skills, produces a severity-ranked findings report, rewrites Critical/High/Medium issues |
+| `/security-review` | Full OWASP sweep — subagent pipeline with threat model, hotspot mapping, parallel auditors, design review, attack-chain analysis |
 
 ---
 
-## GitHub Actions
+## Security Review Modes
 
-### Security Review Action
+### Interactive: `/security-review`
 
-Runs a full Soundcheck security review against your repository, rewrites
-Critical/High/Medium findings, and opens a pull request with the changes and a
-severity-ranked findings table.
+Type `/security-review` in any Claude Code session for a full security audit.
+Works best with sonnet or opus — the skill orchestrates subagents internally.
+
+### PR gate: `--diff-base`
+
+Review only files changed in a PR. Fast on haiku (~1-2 min, ~$1):
+
+```bash
+python scripts/security-review-action.py --repo-dir . --diff-base main
+```
+
+The full pipeline runs for context (threat model, hotspots) but findings are
+scoped to changed files. CI example:
 
 ```yaml
-# .github/workflows/security-review.yml
 name: Security Review
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * 1"  # every Monday
-
+on: [pull_request]
 jobs:
   review:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: thejefflarson/soundcheck-action@main
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g '@anthropic-ai/claude-code@2.1.108'
+      - run: |
+          python scripts/security-review-action.py \
+            --repo-dir . --diff-base origin/main \
+            --output-summary /tmp/review.md
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+### Full repo scan: `--full-repo`
+
+Deep scan of the entire repository. Sonnet recommended (~10 min, ~$4,
+96% finding precision verified against real codebases):
+
+```bash
+python scripts/security-review-action.py \
+  --repo-dir . --full-repo --model sonnet
+```
+
+Run monthly or quarterly.
 
 ---
 
@@ -141,12 +166,13 @@ handling, logging, deserialization, LLM API calls, or agent workflows.
    ```
 6. Run the smoke test to confirm Claude detects the vulnerability:
    ```bash
-   ANTHROPIC_API_KEY=... python scripts/smoke-test-skills.py --skill <name> --verbose
+   python scripts/smoke-test-skills.py --skill <name> --verbose
    ```
 
-Skills must be under 400 words, include CWE references, and have a concrete runnable
-code rewrite in the "Fix immediately" section. See `docs/test-case-audit.md` for the
-current audit status of all test cases.
+Skills must be under 600 words, include CWE references, and have a concrete runnable
+code rewrite in the "Fix immediately" section (or `## Procedure` for analysis skills).
+Test cases should cover multiple languages where the vulnerable API differs.
+See `docs/test-case-audit.md` for the current audit status.
 
 ## Nominating a new threat
 
