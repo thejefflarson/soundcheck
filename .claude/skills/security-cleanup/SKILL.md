@@ -8,47 +8,37 @@ description: Use when the user wants to fix security issues found by /security-r
 
 ## What this checks
 
-Applies fixes for security findings identified by `/security-review` or
-another Soundcheck skill. Works through findings one at a time, showing
-the proposed fix and waiting for confirmation before editing.
+Applies fixes for security findings. Pair with `/security-review` to
+detect issues, then `/security-cleanup` to fix them.
 
 ## Vulnerable patterns
 
-This skill does not detect vulnerabilities — it remediates them. Use
-`/security-review` first to produce the findings.
+This skill remediates, not detects. Run `/security-review` first.
 
 ## Procedure
 
-1. If the user provides a findings table or references a recent
-   `/security-review`, use those findings. Otherwise, ask the user to
-   run `/security-review` first or paste the findings they want fixed.
+1. Get the findings: from the user's message, a recent `/security-review`
+   output, or ask the user to provide them.
 
 2. For each finding (highest severity first):
    - Read the cited file at the cited line
-   - Show the current vulnerable code
-   - Show the proposed fix with a brief explanation
-   - Ask: "Apply this fix?" — wait for confirmation
-   - On yes: Edit the file. On no: skip and move to the next finding.
+   - Read `.claude/skills/<skill>/SKILL.md` for the correct fix pattern
+   - Apply the fix using the Edit tool
+   - Use the language's idiomatic safe API (Go `html/template`, Python
+     `Environment(autoescape=True)`, Java `PreparedStatement`, etc.)
 
-3. After all findings are processed, summarize what was fixed and what
-   was skipped.
+3. After all findings are processed, summarize what was fixed.
 
-**Fix quality rules:**
-- Read the relevant Soundcheck skill at `.claude/skills/<skill>/SKILL.md`
-  for the correct fix pattern before proposing a change
-- Use the language's idiomatic safe API (e.g. Go `html/template` not
-  `text/template`, Python `Environment(autoescape=True)` not
-  `select_autoescape`, Java `PreparedStatement` not `Statement`)
-- Never introduce a fix that changes the code's observable behavior
-  beyond removing the vulnerability
-- If unsure about the correct fix, say so and ask the developer
+**Rules:**
+- Never change observable behavior beyond removing the vulnerability
+- If unsure about the correct fix, say so and skip that finding
+- One Edit per finding — don't refactor surrounding code
 
 ## Verification
 
-- [ ] Every fix was confirmed by the user before applying
 - [ ] Each fix addresses the specific finding cited
 - [ ] No fix introduces new vulnerabilities or changes business logic
-- [ ] Summary lists all findings and their disposition (fixed/skipped)
+- [ ] Summary lists all findings and their disposition
 
 ## References
 

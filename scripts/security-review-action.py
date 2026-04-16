@@ -143,6 +143,9 @@ def main() -> int:
                         help="Git ref to diff against. Changed files only.")
     parser.add_argument("--full-repo", action="store_true",
                         help="Full scan (use with --model sonnet).")
+    parser.add_argument("--autofix", action="store_true",
+                        help="After review, run /security-cleanup to apply "
+                             "fixes automatically (no confirmation prompts).")
     args = parser.parse_args()
 
     repo_dir = Path(args.repo_dir).resolve()
@@ -229,6 +232,41 @@ def main() -> int:
     summary = build_pr_body(findings)
     Path(args.output_summary).write_text(summary, encoding="utf-8")
     print(f"PR summary written to {args.output_summary}")
+
+    # --autofix: run security-cleanup to apply fixes without prompts
+    if args.autofix and findings:
+        cleanup_skill = SKILLS_DIR / "security-cleanup" / "SKILL.md"
+        if not cleanup_skill.exists():
+            print("WARNING: security-cleanup skill not found, skipping autofix",
+                  file=sys.stderr)
+        else:
+            print(f"\nRunning autofix on {len(findings)} findings...")
+            findings_table = "\n".join(
+                f"| {f.get('severity','?')} | `{f.get('file','?')}:{f.get('line','')}` "
+                f"| {f.get('skill','?')} | {f.get('finding','?')} |"
+                for f in findings
+            )
+            cleanup_prompt = (
+                "Apply fixes for these security findings. This is running in "
+                "CI autofix mode — apply every fix without asking for "
+                "confirmation.\n\n"
+                "| Severity | File:Line | Skill | Finding |\n"
+                "|----------|-----------|-------|---------|"
+                f"\n{findings_table}"
+            )
+            try:
+                cleanup_response = run_claude(
+                    cleanup_prompt,
+                    cleanup_skill.read_text(encoding="utf-8"),
+                    model=args.model,
+                    cwd=repo_dir,
+                    append_system_prompt=ANTI_INJECTION,
+                    max_budget_usd=args.max_budget_usd,
+                    timeout=args.timeout,
+                )
+                print(cleanup_response)
+            except ClaudeCLIError as exc:
+                print(f"WARNING: autofix failed: {exc}", file=sys.stderr)
 
     return 1 if critical_high else 0
 
