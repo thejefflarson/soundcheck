@@ -113,6 +113,42 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  auto-invocation:
+    name: Auto-invocation A/B test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Run on weekly schedule and manual dispatch; skip the quarterly trigger
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "20"
+
+      - name: Install claude CLI
+        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
+
+      - name: Run A/B auto-invocation test
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/test-auto-invocation.py --model sonnet 2>&1 | tee /tmp/ab-output.txt
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "## Auto-Invocation A/B Test"
+            echo
+            echo "Model: \`sonnet\` — tests whether Soundcheck plugin improves code safety vs bare Claude"
+            echo
+            echo '```'
+            tail -20 /tmp/ab-output.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   quarterly-threat-review:
     name: Open quarterly threat radar review issue
     runs-on: ubuntu-latest
