@@ -18,7 +18,8 @@ This skill remediates, not detects. Run `/security-review` first.
 ## Procedure
 
 1. Get the findings: from the user's message, a recent `/security-review`
-   output, or ask the user to provide them.
+   output, or — if none are available — run `/security-review` first to
+   produce them.
 
 2. For each finding (highest severity first):
    - Read the cited file at the cited line
