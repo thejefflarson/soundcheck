@@ -1,6 +1,6 @@
 # Skill Template
 
-Copy this file to `skills/<kebab-name>/SKILL.md` and fill in all fields.
+Copy this file to `.claude/skills/<kebab-name>/SKILL.md` and fill in all fields.
 Delete this instruction block before shipping.
 
 ---

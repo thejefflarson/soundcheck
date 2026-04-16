@@ -132,7 +132,7 @@ handling, logging, deserialization, LLM API calls, or agent workflows.
 ## Contributing
 
 1. Read `CLAUDE.md` for dev conventions
-2. Copy `docs/skill-template.md` to `skills/<name>/SKILL.md`
+2. Copy `docs/skill-template.md` to `.claude/skills/<name>/SKILL.md`
 3. Fill in all fields — no TODO placeholders
 4. Add a test case to `docs/test-cases/<name>.<ext>`
 5. Run the static validator — must pass with no violations:

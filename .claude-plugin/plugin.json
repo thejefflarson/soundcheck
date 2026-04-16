@@ -5,5 +5,5 @@
   "author": { "name": "Jeff Larson", "url": "https://github.com/thejefflarson" },
   "license": "MIT",
   "keywords": ["security", "owasp", "vulnerability", "llm-security"],
-  "skills": "./skills"
+  "skills": "./.claude/skills"
 }

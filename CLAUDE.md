@@ -11,6 +11,27 @@ change, and continues with the original task — no user intervention required.
 Auto-invocation is driven entirely by the `description` frontmatter in each `SKILL.md`.
 No CLAUDE.md trigger mapping is needed — the description field IS the trigger.
 
+## Threat model (for /security-review against this repo)
+
+- **Purpose:** Claude Code plugin (skills) + a PR-gate GitHub Action
+  (`scripts/security-review-action.py`) + a GitHub Action-style self-test.
+- **Attack surface:** `scripts/security-review-action.py` (CI with write
+  perms and API access), `.github/workflows/*`, `.claude-plugin/plugin.json`,
+  `.claude/skills/*/SKILL.md`. Everything under `scripts/` is maintainer code
+  run locally or in CI with trusted inputs.
+- **Trusted inputs:** maintainer-committed skill files, `scripts/`,
+  `docs/skill-template.md`, `plugin.json`, hardcoded benchmark manifests.
+- **Untrusted inputs:** third-party repo content scanned by
+  `security-review-action.py`, cloned benchmark repos, GitHub issue content.
+- **Out of scope** (auditors should discount these):
+  - Defense-in-depth hardening on local-only dev scripts (`benchmark-*.py`,
+    `smoke-test-skills.py`, `validate-skills.py`).
+  - Intentionally vulnerable fixtures in `docs/test-cases/`.
+  - Opt-in flags whose behavior is the feature: `--apply-rewrites` on
+    `security-review-action.py` hands the agent Edit access by design so CI
+    can apply fixes automatically; this is opt-in, not a default.
+  - Word-count / lint / style issues in skill files.
+
 ## Skill Authoring Conventions
 
 ### Structure
@@ -20,7 +41,7 @@ placeholders.
 
 ### Length
 
-Each skill must stay **under 400 words**. Trim aggressively. Security advice that can't
+Each skill must stay **under 600 words**. Trim aggressively. Security advice that can't
 fit is advice that won't be read.
 
 ### Description field (auto-invocation trigger)
@@ -42,11 +63,17 @@ Descriptions should be 2–3 sentences and specific enough to avoid false positi
 Every skill must include at least one CWE reference in the References section. Check
 [cwe.mitre.org](https://cwe.mitre.org) for accuracy.
 
-### "Fix immediately" section
+### Action section — "Fix immediately" or "Procedure"
 
-This section must contain a **concrete, runnable code rewrite** — not advice, not
-pseudocode. If the fix requires a library, name it. If the fix requires a pattern, show
-the pattern. Claude will use this section to perform the actual rewrite.
+Fix-oriented skills use `## Fix immediately` and must contain a **concrete, runnable
+code rewrite** — not advice, not pseudocode. If the fix requires a library, name it.
+If the fix requires a pattern, show the pattern. Claude will use this section to
+perform the actual rewrite.
+
+Analysis/orchestration skills (hotspots, threat-model, security-review) use
+`## Procedure` instead, since they produce a report rather than rewriting code. The
+procedure must be concrete: numbered or labeled steps the agent follows to generate
+the required output.
 
 ### OWASP category
 
@@ -55,9 +82,9 @@ and in the References section.
 
 ## Updating the Security Review Skill
 
-`skills/security-review/SKILL.md` contains a list of every Soundcheck skill with a
+`.claude/skills/security-review/SKILL.md` contains a list of every Soundcheck skill with a
 short description of what it covers. **When adding a new skill, add it to the list in
-the "Fix immediately" section of that file.** The skill will not be considered during
+the "Procedure" section of that file.** The skill will not be considered during
 `/security-review` sweeps otherwise.
 
 ## Testing Skills
@@ -76,13 +103,13 @@ To verify a skill works:
 - [ ] Skill auto-invokes on its canonical vulnerable pattern
 - [ ] No false negatives on the test case file
 - [ ] Rewrite is actually secure (not just renamed variables)
-- [ ] Under 400 words
+- [ ] Under 600 words
 - [ ] CWE references present and accurate
 - [ ] No TODO placeholders
 
 ## File Locations
 
-- Skills: `skills/<name>/SKILL.md`
+- Skills: `.claude/skills/<name>/SKILL.md`
 - Template: `docs/skill-template.md`
 - Test cases: `docs/test-cases/<skill-name>.<ext>`
 - Plugin manifest: `.claude-plugin/plugin.json`

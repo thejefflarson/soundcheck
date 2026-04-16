@@ -18,7 +18,7 @@ assignees: ""
 ## Why not covered by an existing Soundcheck skill
 
 <!-- List the most relevant existing skills and explain what's distinct about this threat.
-     Check skills/ for the full list. -->
+     Check .claude/skills/ for the full list. -->
 
 ## Real-world evidence
 

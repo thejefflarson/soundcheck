@@ -9,7 +9,7 @@ A living backlog of emerging threats tracked for potential Soundcheck coverage.
 | `watching` | Too early, too niche, or not code-detectable yet — awareness only |
 | `candidate` | Credible, code-detectable, ready for a skill to be drafted |
 | `in-progress` | Skill being written |
-| `shipped` | Skill exists in `skills/` |
+| `shipped` | Skill exists in `.claude/skills/` |
 
 ## How to nominate a threat
 
@@ -19,7 +19,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 ## Radar entries
 
 ### MCP Server Security
-- **Status:** `shipped` (`skills/mcp-security/`)
+- **Status:** `shipped` (`.claude/skills/mcp-security/`)
 - **OWASP:** LLM07:2025
 - **Severity:** Critical
 - **Why code-detectable:** Tool handlers with unconstrained path/shell inputs; hardcoded secrets in tool definitions; missing schema constraints
@@ -27,7 +27,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-02-26
 
 ### OAuth/OIDC Implementation Flaws
-- **Status:** `shipped` (`skills/oauth-implementation/`)
+- **Status:** `shipped` (`.claude/skills/oauth-implementation/`)
 - **OWASP:** A07:2025
 - **Severity:** High
 - **Why code-detectable:** `algorithms=["none"]`, prefix-match redirect_uri, missing state parameter, hardcoded secrets
@@ -35,7 +35,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-02-26
 
 ### RAG Pipeline Security
-- **Status:** `shipped` (`skills/rag-security/`)
+- **Status:** `shipped` (`.claude/skills/rag-security/`)
 - **OWASP:** LLM01:2025
 - **Severity:** High
 - **Why code-detectable:** Arbitrary URL fetch without allowlist; no content length cap; retrieved content injected without delimiters
@@ -43,28 +43,28 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-02-26
 
 ### Insecure Local Data Storage
-- **Status:** `shipped` (`skills/insecure-local-storage/`)
+- **Status:** `shipped` (`.claude/skills/insecure-local-storage/`)
 - **OWASP:** A02:2025 / Mobile M9:2024
 - **Severity:** High
 - **Why code-detectable:** Credentials/tokens written to plaintext files, NSUserDefaults, SharedPreferences, or temp directories without encryption
 - **Added:** 2026-03-01
 
 ### IPC Security
-- **Status:** `shipped` (`skills/ipc-security/`)
+- **Status:** `shipped` (`.claude/skills/ipc-security/`)
 - **OWASP:** A01:2025 / Mobile M4:2024
 - **Severity:** High
 - **Why code-detectable:** URL scheme handlers without allowlists, exported Android activities without permissions, IPC sockets bound to 0.0.0.0 without authentication
 - **Added:** 2026-03-01
 
 ### On-Demand Security Review
-- **Status:** `shipped` (`skills/security-review/`)
+- **Status:** `shipped` (`.claude/skills/security-review/`)
 - **OWASP:** A01:2025–A10:2025 + LLM01:2025–LLM10:2025
 - **Severity:** N/A (orchestrator skill)
 - **Why code-detectable:** User-invocable slash command; orchestrates all Soundcheck skills in sequence and produces a severity-ranked findings report
 - **Added:** 2026-03-01
 
 ### Slopsquatting / AI Hallucinated Package Names
-- **Status:** `shipped` (extended `skills/supply-chain/`)
+- **Status:** `shipped` (extended `.claude/skills/supply-chain/`)
 - **OWASP:** A03:2025 (extends existing `supply-chain` skill)
 - **Severity:** High
 - **Why code-detectable:** LLM-suggested package names that don't exist on PyPI/npm; AI-generated `requirements.txt` or `package.json` with non-existent packages
@@ -73,7 +73,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-02-26
 
 ### Multi-Agent Trust Boundaries
-- **Status:** `shipped` (`skills/multi-agent-trust/`)
+- **Status:** `shipped` (`.claude/skills/multi-agent-trust/`)
 - **OWASP:** LLM08:2025 (Excessive Agency)
 - **Severity:** High
 - **Why code-detectable:** Agent-to-agent calls without authentication; downstream agents given same permissions as orchestrator; no message signing between agents
@@ -81,7 +81,7 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Added:** 2026-02-26
 
 ### Token Smuggling / Unicode Homoglyph Injection
-- **Status:** `shipped` (`skills/token-smuggling/`)
+- **Status:** `shipped` (`.claude/skills/token-smuggling/`)
 - **OWASP:** LLM01:2025
 - **Severity:** Medium
 - **Why code-detectable:** User input passed to LLMs without Unicode normalization; RTL override characters in untrusted strings; invisible characters in prompt construction
