@@ -21,6 +21,9 @@ on:
     # First Monday of Jan/Apr/Jul/Oct at 10:00 UTC — triggers quarterly threat review
     - cron: "0 10 1-7 1,4,7,10 1"
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

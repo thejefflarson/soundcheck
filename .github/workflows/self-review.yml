@@ -37,9 +37,11 @@ jobs:
       - name: Run security review (read-only)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           python scripts/security-review-action.py \
             --repo-dir . \
+            --diff-base "origin/$BASE_REF" \
             --output-summary /tmp/self-review-summary.md
 
       - name: Append to job summary
