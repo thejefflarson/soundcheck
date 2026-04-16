@@ -29,7 +29,7 @@ REQUIRED_SECTIONS = [
 # Exactly one of these must be present.
 ACTION_SECTIONS = ["## Fix immediately", "## Procedure"]
 
-OWASP_PATTERN = re.compile(r"(A\d{2}:\d{4}|LLM\d{2}:\d{4})")
+OWASP_PATTERN = re.compile(r"(A\d{2}:\d{4}|LLM\d{2}:\d{4}|API\d+:\d{4})")
 CWE_PATTERN = re.compile(r"CWE-\d+")
 MAX_WORDS = 600
 
@@ -114,7 +114,7 @@ def validate_skill(skill_dir: Path) -> list[str]:
     # 6. OWASP identifier in title
     if not OWASP_PATTERN.search(text):
         violations.append(
-            "No OWASP identifier found in title (expected A##:#### or LLM##:####)"
+            "No OWASP identifier found in title (expected A##:####, LLM##:####, or API#:####)"
         )
 
     # 7. Test case file exists

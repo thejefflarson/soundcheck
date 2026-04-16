@@ -29,7 +29,8 @@ in subagents.**
 `exceptional-conditions`, `logging-failures`, `ipc-security`,
 `sensitive-disclosure`, `model-theft`, `model-dos`, `mcp-security`,
 `excessive-agency`, `multi-agent-trust`, `overreliance`,
-`insecure-plugin-design`, `llm-supply-chain`, `insecure-design`.
+`insecure-plugin-design`, `llm-supply-chain`, `insecure-design`,
+`mass-assignment`, `csrf`, `file-upload`.
 
 ### Stage 0 — Threat model (one subagent)
 
