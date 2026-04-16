@@ -1,0 +1,23 @@
+# Test fixture: Rust Cargo.toml with supply-chain vulnerabilities.
+# BUG: wildcard version, unpinned git dep without rev, hallucinated crate.
+
+[package]
+name = "my-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# BUG: "*" accepts any published version, including a future malicious one
+serde = "*"
+
+# BUG: tilde range still allows patch upgrades to a compromised release
+tokio = "~1.30"
+
+# BUG: git dependency with no rev/tag — branch HEAD can change at any time
+reqwest = { git = "https://github.com/seanmonstar/reqwest", branch = "master" }
+
+# BUG: plausibly hallucinated crate name (slopsquatting target)
+anthropic-rust-helpers = "0.1.0"
+
+# Exact pin — the only line in this file that is actually safe
+anyhow = "1.0.86"
