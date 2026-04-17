@@ -1,9 +1,9 @@
 # Soundcheck
 
-Automated OWASP security checks for Claude Code. 37 skills covering **OWASP Web Top 10:2025**,
-**OWASP LLM Top 10:2025**, and **OWASP API Security Top 10:2023** that auto-invoke when Claude
-writes vulnerable code patterns, flag the issue, explain the fix, and continue with your
-original task.
+Automated security checks for Claude Code. 45 skills covering injection, authentication,
+cryptography, access control, LLM-specific threats, and more — drawn from OWASP, CWE, and
+real-world vulnerability patterns. Skills auto-invoke when Claude writes vulnerable code,
+flag the issue, explain the fix, and continue with your original task.
 
 No configuration needed. No user intervention required.
 
@@ -16,7 +16,7 @@ claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
-After installation, all 37 skills are active in every Claude Code session. Claude will
+After installation, all 45 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
 
 **Try it without installing** (current session only):
@@ -80,6 +80,14 @@ background on every relevant code-writing task.
 | HTTP requests to user-supplied URLs, webhook callbacks, URL preview features | `ssrf` | A10:2025 |
 | File open/read/write with paths from user input, static file serving by name | `path-traversal` | A01:2025 |
 | Third-party API calls, external response parsing, webhook/callback integration | `unsafe-api-consumption` | API10:2023 |
+| Regular expressions on user input, input validation patterns | `redos` | CWE-1333 |
+| Check-then-act on shared state, balance updates without locks, TOCTOU | `race-condition` | CWE-362 |
+| Redirect to URL from request params, login "return to" URLs | `open-redirect` | CWE-601 |
+| JS/TS deep merge, Object.assign, lodash merge with user input | `prototype-pollution` | CWE-1321 |
+| API keys, passwords, tokens as string literals in source | `hardcoded-secrets` | CWE-798 |
+| GraphQL schemas without depth limits, introspection in production | `graphql-security` | CWE-400 |
+| MongoDB/NoSQL queries with user input, operator injection | `nosql-injection` | CWE-943 |
+| User input in HTTP response headers, CRLF injection | `header-injection` | CWE-113 |
 
 ### On-Demand
 

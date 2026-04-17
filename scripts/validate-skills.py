@@ -111,10 +111,11 @@ def validate_skill(skill_dir: Path) -> list[str]:
     if not CWE_PATTERN.search(text):
         violations.append("No CWE reference found (expected pattern: CWE-\\d+)")
 
-    # 6. OWASP identifier in title
-    if not OWASP_PATTERN.search(text):
+    # 6. OWASP identifier in title OR CWE-only skill (some skills map to CWE
+    #    without a direct OWASP category)
+    if not OWASP_PATTERN.search(text) and not CWE_PATTERN.search(text):
         violations.append(
-            "No OWASP identifier found in title (expected A##:####, LLM##:####, or API#:####)"
+            "No OWASP or CWE identifier found (expected A##:####, LLM##:####, API#:####, or CWE-###)"
         )
 
     # 7. Test case file exists

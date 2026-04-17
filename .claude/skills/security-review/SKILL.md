@@ -31,7 +31,9 @@ in subagents.**
 `excessive-agency`, `multi-agent-trust`, `overreliance`,
 `insecure-plugin-design`, `llm-supply-chain`, `insecure-design`,
 `mass-assignment`, `csrf`, `file-upload`, `ssrf`, `path-traversal`,
-`unsafe-api-consumption`.
+`unsafe-api-consumption`, `redos`, `race-condition`, `open-redirect`,
+`prototype-pollution`, `hardcoded-secrets`, `graphql-security`,
+`nosql-injection`, `header-injection`.
 
 ### Stage 0 — Threat model (one subagent)
 
