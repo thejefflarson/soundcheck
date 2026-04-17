@@ -5,7 +5,7 @@ description: Use when writing error handlers, exception catching blocks, try/cat
   on exception, or when stack traces might reach end users.
 ---
 
-# Exceptional Conditions Security Check (A10:2025)
+# Exceptional Conditions Security Check (A05:2025)
 
 ## What this checks
 
@@ -76,4 +76,4 @@ Confirm the following *properties* hold (language-agnostic):
 - CWE-388 ([Error Handling](https://cwe.mitre.org/data/definitions/388.html))
 - CWE-391 ([Unchecked Error Condition](https://cwe.mitre.org/data/definitions/391.html))
 - CWE-209 ([Generation of Error Message Containing Sensitive Information](https://cwe.mitre.org/data/definitions/209.html))
-- [OWASP A10:2025 – Server-Side Request Forgery](https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/)
+- [OWASP A05:2025 Security Misconfiguration](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/)

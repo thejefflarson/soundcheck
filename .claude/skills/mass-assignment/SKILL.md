@@ -6,7 +6,7 @@ description: Use when writing code that creates or updates database records from
   field allowlist.
 ---
 
-# Mass Assignment Check (API8:2023)
+# Mass Assignment Check (API3:2023)
 
 ## What this checks
 
@@ -81,4 +81,4 @@ Confirm the following properties hold (language-agnostic):
 ## References
 
 - CWE-915 ([Improperly Controlled Modification of Dynamically-Determined Object Attributes](https://cwe.mitre.org/data/definitions/915.html))
-- [OWASP API8:2023 Security Misconfiguration](https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/)
+- [OWASP API3:2023 Broken Object Property Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/)

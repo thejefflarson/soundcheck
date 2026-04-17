@@ -240,7 +240,7 @@ def run_coding_task(prompt: str, model: str, plugin: bool) -> str:
 
         result = subprocess.run(
             cmd, input=prompt, capture_output=True, text=True,
-            timeout=120, cwd=tmpdir,
+            timeout=300, cwd=tmpdir,
         )
     return result.stdout.strip()
 

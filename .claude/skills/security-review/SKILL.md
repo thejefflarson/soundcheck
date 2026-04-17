@@ -30,7 +30,8 @@ in subagents.**
 `sensitive-disclosure`, `model-theft`, `model-dos`, `mcp-security`,
 `excessive-agency`, `multi-agent-trust`, `overreliance`,
 `insecure-plugin-design`, `llm-supply-chain`, `insecure-design`,
-`mass-assignment`, `csrf`, `file-upload`.
+`mass-assignment`, `csrf`, `file-upload`, `ssrf`, `path-traversal`,
+`unsafe-api-consumption`.
 
 ### Stage 0 — Threat model (one subagent)
 

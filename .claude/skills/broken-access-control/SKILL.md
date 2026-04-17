@@ -73,5 +73,7 @@ Confirm the following *properties* hold (language-agnostic):
 ## References
 
 - CWE-284 ([Improper Access Control](https://cwe.mitre.org/data/definitions/284.html))
+- CWE-862 ([Missing Authorization](https://cwe.mitre.org/data/definitions/862.html))
+- CWE-863 ([Incorrect Authorization](https://cwe.mitre.org/data/definitions/863.html))
 - CWE-918 ([Server-Side Request Forgery](https://cwe.mitre.org/data/definitions/918.html))
 - [OWASP A01:2025 Broken Access Control](https://owasp.org/Top10/A01_2021-Broken_Access_Control/)

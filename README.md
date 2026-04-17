@@ -1,8 +1,9 @@
 # Soundcheck
 
-Automated OWASP security checks for Claude Code. 30 skills covering **OWASP Web Top 10:2025**
-and **OWASP LLM Top 10:2025** that auto-invoke when Claude writes vulnerable code patterns,
-rewrite the vulnerable section inline, explain the fix, and continue with your original task.
+Automated OWASP security checks for Claude Code. 37 skills covering **OWASP Web Top 10:2025**,
+**OWASP LLM Top 10:2025**, and **OWASP API Security Top 10:2023** that auto-invoke when Claude
+writes vulnerable code patterns, flag the issue, explain the fix, and continue with your
+original task.
 
 No configuration needed. No user intervention required.
 
@@ -15,7 +16,7 @@ claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
-After installation, all 30 skills are active in every Claude Code session. Claude will
+After installation, all 37 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
 
 **Try it without installing** (current session only):
@@ -54,7 +55,7 @@ background on every relevant code-writing task.
 | Login, sessions, JWT, password storage, MFA, API key management | `authentication-failures` | A07:2025 |
 | Deserialization, pickle/yaml load, software update verification, CI artifacts | `integrity-failures` | A08:2025 |
 | Logging, audit trails, error handlers that log, security event recording | `logging-failures` | A09:2025 |
-| Error handlers, try/catch, API error responses, exception propagation | `exceptional-conditions` | A10:2025 |
+| Error handlers, try/catch, API error responses, exception propagation | `exceptional-conditions` | A05:2025 |
 | LLM prompt construction with user input, RAG pipelines, system prompts | `prompt-injection` | LLM01:2025 |
 | Rendering LLM output to UI, executing LLM-generated code, downstream LLM output use | `insecure-output-handling` | LLM02:2025 |
 | Fine-tuning pipelines, dataset ingestion, training data from external sources | `training-data-poisoning` | LLM03:2025 |
@@ -73,6 +74,12 @@ background on every relevant code-writing task.
 | URL scheme handlers, exported Android activities, IPC sockets, XPC service handlers | `ipc-security` | A01:2025 |
 | Agent-to-agent calls, subagent spawning, multi-agent pipelines | `multi-agent-trust` | LLM08:2025 |
 | User-supplied strings to LLM with Unicode control chars, homoglyphs, RTL override | `token-smuggling` | LLM01:2025 |
+| ORM create/update from raw request body, spread/merge without field allowlist | `mass-assignment` | API3:2023 |
+| HTML forms with POST/PUT/DELETE, session cookies, CSRF middleware config | `csrf` | A01:2025 |
+| File upload handlers, multipart form data, user-supplied filenames | `file-upload` | A04:2025 |
+| HTTP requests to user-supplied URLs, webhook callbacks, URL preview features | `ssrf` | A10:2025 |
+| File open/read/write with paths from user input, static file serving by name | `path-traversal` | A01:2025 |
+| Third-party API calls, external response parsing, webhook/callback integration | `unsafe-api-consumption` | API10:2023 |
 
 ### On-Demand
 

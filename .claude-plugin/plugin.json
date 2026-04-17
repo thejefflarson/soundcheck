@@ -1,7 +1,7 @@
 {
   "name": "soundcheck",
-  "version": "1.5.0",
-  "description": "Automated OWASP security checks — Web Top 10:2025 and LLM Top 10:2025",
+  "version": "1.6.0",
+  "description": "Automated OWASP security checks — Web Top 10:2025, LLM Top 10:2025, API Security Top 10:2023",
   "author": { "name": "Jeff Larson", "url": "https://github.com/thejefflarson" },
   "license": "MIT",
   "keywords": ["security", "owasp", "vulnerability", "llm-security"],
