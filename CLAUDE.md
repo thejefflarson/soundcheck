@@ -122,18 +122,23 @@ To verify a skill works:
 
 ## Release checklist
 
-When cutting a soundcheck release, update **all** of these on the same commit, then tag:
+Use `scripts/release.py` — it automates everything below. Dry-run by default:
 
-1. `.claude-plugin/plugin.json` — bump `version`
-2. `.claude-plugin/marketplace.json` — bump `plugins[0].version` and update the skill
-   count in `description` if skills were added/removed
-3. Tag the commit (e.g. `v1.7.0`) and push the tag
+```bash
+python scripts/release.py 1.8.0            # preview
+python scripts/release.py 1.8.0 --push     # apply, with confirmation prompt
+```
 
-Then, in `../soundcheck-action`:
+The script:
 
-4. Update `SOUNDCHECK_SHA` in `action.yml` to the new soundcheck release commit
-5. Commit, tag (e.g. `v1.0.x`), and **move the floating `v1` tag** to the new commit —
-   users pinned to `@v1` won't get fixes otherwise
+1. Bumps `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` (also
+   refreshing the skill count in the marketplace description)
+2. Commits, tags `vX.Y.Z`, pushes soundcheck
+3. Updates `SOUNDCHECK_SHA` in `../soundcheck-action/action.yml` to the new HEAD
+4. Commits, tags the next `v1.0.N`, force-moves `v1`, pushes soundcheck-action
+
+Refuses to run unless both working trees are clean and on `main`. GitHub release
+notes stay manual (`gh release create ...`) so they can be hand-written.
 
 ## Lockstep with soundcheck-action
 
