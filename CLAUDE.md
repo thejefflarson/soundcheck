@@ -120,6 +120,21 @@ To verify a skill works:
 - Security review action script: `scripts/security-review-action.py`
 - Security review GitHub Action: https://github.com/thejefflarson/soundcheck-action
 
+## Release checklist
+
+When cutting a soundcheck release, update **all** of these on the same commit, then tag:
+
+1. `.claude-plugin/plugin.json` — bump `version`
+2. `.claude-plugin/marketplace.json` — bump `plugins[0].version` and update the skill
+   count in `description` if skills were added/removed
+3. Tag the commit (e.g. `v1.7.0`) and push the tag
+
+Then, in `../soundcheck-action`:
+
+4. Update `SOUNDCHECK_SHA` in `action.yml` to the new soundcheck release commit
+5. Commit, tag (e.g. `v1.0.x`), and **move the floating `v1` tag** to the new commit —
+   users pinned to `@v1` won't get fixes otherwise
+
 ## Lockstep with soundcheck-action
 
 `thejefflarson/soundcheck-action` (sibling repo, usually at `../soundcheck-action`) pins a
@@ -128,10 +143,7 @@ specific soundcheck commit SHA in `action.yml` and hardcodes the path to
 renames the `security-review` skill, alters its sibling-skill discovery (the action does
 `skills_dir = skill_path.parent.parent`), or changes the structured-output tags the
 review script parses (`<soundcheck-rewrite>`, `<soundcheck-findings>`) requires a
-matching commit + tag in soundcheck-action. When cutting a soundcheck release, bump
-`SOUNDCHECK_SHA` in `soundcheck-action/action.yml`, tag `soundcheck-action` (v1.0.x), and
-move the floating `v1` tag to the new release — users pinned to `@v1` won't get fixes
-otherwise.
+matching commit + tag in soundcheck-action.
 
 ## Nominating a Threat
 
