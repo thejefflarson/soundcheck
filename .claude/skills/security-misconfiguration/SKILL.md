@@ -17,7 +17,7 @@ information disclosure via error pages or debug endpoints.
 
 - `app.use(cors({ origin: "*", credentials: true }))` — wildcard CORS with credentials leaks cookies to any site
 - `app.run(debug=True)` — Flask/Django debug mode exposes interactive traceback console in production
-- `password = "admin"` hardcoded in source — default credential committed to version control
+- `ALLOWED_HOSTS = ["*"]` — permissive host validation in production. For hardcoded secrets, see `hardcoded-secrets`
 - Missing `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options` headers
 
 ## Fix immediately
@@ -59,7 +59,6 @@ Confirm the following *properties* hold (language-agnostic):
 
 - [ ] For every CORS configuration present in the code, if credentials are allowed then the allowed-origins value is an explicit allowlist — never a wildcard (`*`) or a reflected `Origin` header
 - [ ] For every debug/development flag present in the code (`debug=True`, `DEBUG`, `RUST_LOG=trace`, verbose error responders, etc.), the value is sourced from an environment variable or config and defaults to off in production
-- [ ] For every secret or credential present in the code (DB passwords, API keys, signing keys), the value is read from an environment variable or secrets manager — never a hardcoded literal or committed config file
 - [ ] For every HTTP server or router present in the code, a security-headers layer (helmet, Django `SecurityMiddleware`, Rust `tower-http::set_header` / `SetResponseHeaderLayer`, Spring `HttpSecurity.headers()`, etc.) is registered before routes, setting at minimum `Strict-Transport-Security`, `X-Content-Type-Options`, and a framing/CSP control — unless the code comments explicitly document that an upstream proxy owns these headers
 
 ## References

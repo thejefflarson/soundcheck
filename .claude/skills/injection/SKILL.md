@@ -9,16 +9,17 @@ description: Use when writing code that constructs database queries, builds SQL 
 
 ## What this checks
 
-Protects against SQL, command, template, and NoSQL injection caused by passing
+Protects against SQL, command, and template injection caused by passing
 user-controlled data to an interpreter without sanitization. Exploitation leads to
 full database read/write, remote code execution, and data exfiltration.
+For NoSQL-specific injection (MongoDB operator injection, `$where`), see `nosql-injection`.
 
 ## Vulnerable patterns
 
 - `"SELECT * FROM users WHERE id = " + userId` — user input concatenated into SQL
 - `exec("convert " + filename)` — shell expansion allows `; rm -rf /`
 - `eval(userInput)` — arbitrary code execution from user-supplied string
-- `db.find({role: req.body.role})` — NoSQL operator injection (`{"$ne": null}`)
+- `Template("Hello " + name)` — template body built from user input
 
 ## Fix immediately
 
@@ -27,7 +28,6 @@ For each vulnerable call site, apply the appropriate control:
 - **SQL**: use parameterized queries or an ORM — never concatenate user input into query strings
 - **Shell**: pass arguments as an array/list, never as an interpolated string — disable shell expansion
 - **Templates**: use an engine that autoescapes by default and pass user values through the parameter interface. Python: `Environment(autoescape=True)` (bool literal, not `select_autoescape()` with `from_string()`). Go: `html/template`, never `text/template` for HTTP output. Java FreeMarker: `cfg.setOutputFormat(HTMLOutputFormat.INSTANCE)`. Rust: `handlebars` (escapes by default). Never build the template body from user input.
-- **NoSQL**: validate filter values against a strict schema before the query executes
 - **eval/exec**: remove entirely — there is no safe way to evaluate user-supplied code strings
 
 Flag the vulnerable call site, explain the risk and the correct fix pattern, then continue with the original task.
@@ -40,7 +40,6 @@ Confirm the following *properties* hold (language-agnostic):
 - [ ] User-controlled values reach subprocess execution only as discrete argument list elements — never via a shell string or interpolated command string
 - [ ] No dynamic evaluation of user-supplied strings as code (Python `eval`/`exec`, JS `eval`/`new Function`, etc. removed — not replaced with a safer-looking variant of the same function)
 - [ ] Templates use an engine where HTML autoescaping is either enabled explicitly or is the documented default (Flask `render_template`, Go `html/template`, Rust `handlebars`, Jinja2 `Environment(autoescape=True)` — NOT Jinja2 `Template()` direct, NOT Go `text/template`), and user values are passed through the engine's parameter interface — never by building the template body from user input
-- [ ] Structured-query filters (NoSQL, GraphQL, LDAP) validate user-supplied keys and values against a schema before reaching the query builder
 
 ## References
 
