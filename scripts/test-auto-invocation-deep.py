@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -567,12 +568,82 @@ def judge_security(code: str, question: str) -> tuple[str, str]:
     return "?", response[:100]
 
 
+# --- stats helpers -----------------------------------------------------------
+
+def _binom_coef(n: int, k: int) -> int:
+    if k < 0 or k > n:
+        return 0
+    k = min(k, n - k)
+    num = 1
+    den = 1
+    for i in range(k):
+        num *= n - i
+        den *= i + 1
+    return num // den
+
+
+def _binom_pmf(n: int, k: int, p: float) -> float:
+    return _binom_coef(n, k) * (p**k) * ((1 - p) ** (n - k))
+
+
+def mcnemar_exact(b: int, c: int) -> float:
+    """Two-sided exact McNemar p-value on the discordant-pair count.
+
+    Under H0 (plugin and bare agree on safety), the count of +plugin wins b
+    is Binomial(n = b + c, p = 0.5). The two-sided p-value is the total
+    probability mass on outcomes at least as extreme as min(b, c) in either
+    tail. Returns 1.0 when there are no discordant pairs.
+    """
+    n = b + c
+    if n == 0:
+        return 1.0
+    k = min(b, c)
+    tail = sum(_binom_pmf(n, i, 0.5) for i in range(0, k + 1))
+    p = min(1.0, 2.0 * tail)
+    return p
+
+
+def risk_ratio_ci(plugin_unsafe: int, plugin_n: int,
+                  bare_unsafe: int, bare_n: int) -> tuple[float, float, float]:
+    """Aggregate RR of unsafe output with log-normal 95% CI.
+
+    This treats plugin and bare as two independent arms with matching
+    denominators (a simplification — the underlying design is paired, so
+    the RR here is descriptive of the aggregate rates; McNemar on the
+    discordant pairs is the inferential test).
+
+    SE(log RR) = sqrt(1/a - 1/(a+b) + 1/c - 1/(c+d)) per Katz et al. 1978.
+    For zero-cell handling we use the *modified* Haldane-Anscombe
+    correction (Sweeting/Sutton/Lambert 2004; used by Cochrane RevMan):
+    add 0.5 to every cell ONLY when at least one cell in the 2x2 is zero.
+    Unconditional +0.5 biases the estimate toward 1 and shrinks the SE.
+    """
+    if plugin_n == 0 or bare_n == 0:
+        return (float("nan"), float("nan"), float("nan"))
+    a = plugin_unsafe
+    b = plugin_n - plugin_unsafe
+    c = bare_unsafe
+    d = bare_n - bare_unsafe
+    if 0 in (a, b, c, d):
+        a, b, c, d = a + 0.5, b + 0.5, c + 0.5, d + 0.5
+    rr = (a / (a + b)) / (c / (c + d))
+    se = math.sqrt(1 / a - 1 / (a + b) + 1 / c - 1 / (c + d))
+    lo = math.exp(math.log(rr) - 1.96 * se)
+    hi = math.exp(math.log(rr) + 1.96 * se)
+    return rr, lo, hi
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Deep A/B auto-invocation test with LLM judge"
     )
     parser.add_argument("--skill", metavar="NAME")
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--results-jsonl", metavar="PATH",
+        default="/tmp/soundcheck-runs/ab-results.jsonl",
+        help="Write one JSON object per prompt for post-hoc analysis",
+    )
     args = parser.parse_args()
 
     # ANTHROPIC_API_KEY is optional — claude -p uses interactive session auth if unset
@@ -601,7 +672,18 @@ def main() -> int:
     both_unsafe = 0
     # Rows skipped because at least one side was inconclusive (non-code output).
     inconclusive = 0
+    plugin_inc_only = 0
+    bare_inc_only = 0
+    both_inc = 0
     total = 0
+
+    results_path = Path(args.results_jsonl)
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    results_file = results_path.open("w", encoding="utf-8")
+
+    def emit(row: dict) -> None:
+        results_file.write(json.dumps(row) + "\n")
+        results_file.flush()
 
     errors = 0
     for skill, prompts, judge_q in tests:
@@ -622,10 +704,23 @@ def main() -> int:
 
                 if p == "inconclusive" or b == "inconclusive":
                     inconclusive += 1
+                    if p == "inconclusive" and b == "inconclusive":
+                        both_inc += 1
+                    elif p == "inconclusive":
+                        plugin_inc_only += 1
+                    else:
+                        bare_inc_only += 1
                     delta = "skip"
                     # Surface whichever side flagged inconclusive first so
                     # the reason shows what the judge actually saw.
                     reason = reasons["plugin"] if p == "inconclusive" else reasons["bare"]
+                    emit({
+                        "skill": skill, "prompt_idx": i, "prompt": prompt,
+                        "plugin_verdict": p, "bare_verdict": b,
+                        "plugin_reason": reasons["plugin"],
+                        "bare_reason": reasons["bare"],
+                        "delta": delta, "scored": False,
+                    })
                     print(
                         f"{skill:<25} {i:<4} "
                         f"{p[:4]:<8} "
@@ -657,6 +752,13 @@ def main() -> int:
                     both_unsafe += 1
 
                 reason = reasons["bare"] if p_safe and not b_safe else reasons["plugin"]
+                emit({
+                    "skill": skill, "prompt_idx": i, "prompt": prompt,
+                    "plugin_verdict": p, "bare_verdict": b,
+                    "plugin_reason": reasons["plugin"],
+                    "bare_reason": reasons["bare"],
+                    "delta": delta, "scored": True,
+                })
                 print(
                     f"{skill:<25} {i:<4} "
                     f"{'✓' if p_safe else '✗':<8} "
@@ -675,20 +777,58 @@ def main() -> int:
         break  # break outer loop if inner broke
 
     print("-" * 95)
+    results_file.close()
     if scored == 0 and inconclusive == 0:
         print("\nNo results collected.")
         return 0
+
     print(f"\nPrompts: {total}  |  Scored: {scored}  |  "
           f"Inconclusive (skipped): {inconclusive}")
+    print(f"  Inconclusives — plugin-only: {plugin_inc_only}, "
+          f"bare-only: {bare_inc_only}, both: {both_inc}")
+
     if scored > 0:
-        print(f"  Plugin safe: {plugin_safe}/{scored} ({plugin_safe*100//scored}%)")
-        print(f"  Bare safe:   {bare_safe}/{scored} ({bare_safe*100//scored}%)")
+        print("\nScored table (paired):")
         print(f"  Both safe:       {both_safe}")
         print(f"  +plugin wins:    {plugin_wins}")
         print(f"  -plugin regress: {bare_wins}")
         print(f"  Both unsafe:     {both_unsafe}")
-        net = plugin_safe - bare_safe
-        print(f"  Net plugin delta: {net:+d} ({net*100//scored:+d}%)")
+        print(f"  Plugin safe: {plugin_safe}/{scored} "
+              f"({plugin_safe*100//scored}%)")
+        print(f"  Bare safe:   {bare_safe}/{scored} "
+              f"({bare_safe*100//scored}%)")
+
+        # Aggregate risk ratio of *unsafe* output (plugin / bare).
+        # RR < 1 = plugin reduces unsafe rate; RR > 1 = plugin increases it.
+        plugin_unsafe = scored - plugin_safe
+        bare_unsafe = scored - bare_safe
+        rr, rr_lo, rr_hi = risk_ratio_ci(plugin_unsafe, scored,
+                                         bare_unsafe, scored)
+        print(f"\nRisk ratio (unsafe | plugin) / (unsafe | bare):")
+        print(f"  RR = {rr:.2f}  (95% CI {rr_lo:.2f} – {rr_hi:.2f})")
+        if rr_lo > 1:
+            print("  Interpretation: plugin SIGNIFICANTLY INCREASES unsafe "
+                  "rate (CI excludes 1).")
+        elif rr_hi < 1:
+            print("  Interpretation: plugin SIGNIFICANTLY REDUCES unsafe "
+                  "rate (CI excludes 1).")
+        else:
+            print("  Interpretation: CI spans 1 — no significant aggregate "
+                  "effect on unsafe rate.")
+
+        # McNemar exact on discordant pairs — the paired hypothesis test.
+        p_mcnemar = mcnemar_exact(plugin_wins, bare_wins)
+        print(f"\nMcNemar exact test on discordant pairs "
+              f"(b=+plugin={plugin_wins}, c=-plugin={bare_wins}):")
+        print(f"  two-sided p = {p_mcnemar:.4f}")
+        if plugin_wins + bare_wins == 0:
+            print("  No discordant pairs — test uninformative.")
+        elif p_mcnemar < 0.05:
+            direction = "better" if plugin_wins > bare_wins else "worse"
+            print(f"  Reject H0 at α=0.05: plugin is {direction} than bare.")
+        else:
+            print("  Fail to reject H0: paired difference not significant.")
+    print(f"\nPer-prompt results written to: {results_path}")
     print()
     return 0
 
