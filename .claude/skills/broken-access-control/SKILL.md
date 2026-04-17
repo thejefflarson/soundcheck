@@ -23,7 +23,7 @@ For SSRF (server-side request forgery), see the dedicated `ssrf` skill.
 
 When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
 
-- Return 404 (not 403) on ownership/authorization failures to prevent resource enumeration.
+- Return 404 (not 403) on **ownership** failures — prevents resource enumeration. Use this in every language: Python `HTTPException(status_code=404)`, Java `ResponseStatusException(HttpStatus.NOT_FOUND)`, Go `http.NotFound(w, r)`, Rust `StatusCode::NOT_FOUND`. Role-missing failures on privileged routes may use 403 since the route itself is public information.
 - Apply role checks at the router/middleware level, not as inline if-checks in handler bodies.
 
 **Secure pattern:**
