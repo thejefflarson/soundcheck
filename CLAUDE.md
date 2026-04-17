@@ -120,6 +120,19 @@ To verify a skill works:
 - Security review action script: `scripts/security-review-action.py`
 - Security review GitHub Action: https://github.com/thejefflarson/soundcheck-action
 
+## Lockstep with soundcheck-action
+
+`thejefflarson/soundcheck-action` (sibling repo, usually at `../soundcheck-action`) pins a
+specific soundcheck commit SHA in `action.yml` and hardcodes the path to
+`.claude/skills/security-review/SKILL.md`. Any soundcheck change that moves skill files,
+renames the `security-review` skill, alters its sibling-skill discovery (the action does
+`skills_dir = skill_path.parent.parent`), or changes the structured-output tags the
+review script parses (`<soundcheck-rewrite>`, `<soundcheck-findings>`) requires a
+matching commit + tag in soundcheck-action. When cutting a soundcheck release, bump
+`SOUNDCHECK_SHA` in `soundcheck-action/action.yml`, tag `soundcheck-action` (v1.0.x), and
+move the floating `v1` tag to the new release — users pinned to `@v1` won't get fixes
+otherwise.
+
 ## Nominating a Threat
 
 The threat landscape moves faster than OWASP's publication cycle. To nominate a new
