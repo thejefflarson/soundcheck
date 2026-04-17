@@ -362,9 +362,7 @@ def main() -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     args = parser.parse_args()
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("ERROR: ANTHROPIC_API_KEY required", file=sys.stderr)
-        return 1
+    # ANTHROPIC_API_KEY is optional — claude -p uses interactive session auth if unset
 
     tests = DEEP_TESTS
     if args.skill:

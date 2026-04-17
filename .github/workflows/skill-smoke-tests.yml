@@ -169,12 +169,16 @@ jobs:
             const year = now.getFullYear();
             const title = `Quarterly Threat Radar Review — Q${quarter} ${year}`;
 
-            // Dedupe: if an open issue with this title already exists, skip.
-            const existing = await github.rest.search.issuesAndPullRequests({
-              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title}"`,
+            // Dedupe: list issues with the label and check titles (avoids search API indexing delays)
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: "threat-radar-review",
+              state: "open",
+              per_page: 10,
             });
-            if (existing.data.total_count > 0) {
-              core.info(`Issue already exists: ${existing.data.items[0].html_url}`);
+            if (issues.data.some(i => i.title === title)) {
+              core.info(`Issue already exists for ${title}`);
               return;
             }
 
