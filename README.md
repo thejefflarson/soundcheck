@@ -9,6 +9,59 @@ No configuration needed. No user intervention required.
 
 ---
 
+## Security Review
+
+### Interactive: `/security-review`
+
+Type `/security-review` in any Claude Code session for a full security audit.
+Works best with sonnet or opus — the skill orchestrates subagents internally.
+
+### CI / PR gate: [`soundcheck-action`](https://github.com/thejefflarson/soundcheck-action)
+
+Run Soundcheck's security review on every pull request using the
+[Soundcheck GitHub Action](https://github.com/thejefflarson/soundcheck-action).
+It comments a severity-ranked findings table on the PR and, when findings are
+rewritable, commits the fixes back to the branch.
+
+```yaml
+name: Security Review
+on: [pull_request]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: thejefflarson/soundcheck-action@v1
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+See the [action README](https://github.com/thejefflarson/soundcheck-action)
+for inputs (`max-files`, `model`, `base-branch`) and outputs
+(`pr-url`, `findings-count`).
+
+### Local CLI
+
+For one-off scans from your checkout, run the review script directly. PR-scoped:
+
+```bash
+python scripts/security-review-action.py --repo-dir . --diff-base main
+```
+
+Full-repo scan (sonnet recommended, ~10 min, ~$4):
+
+```bash
+python scripts/security-review-action.py --repo-dir . --full-repo --model sonnet
+```
+
+---
+
 ## Install
 
 ```bash
@@ -94,63 +147,6 @@ background on every relevant code-writing task.
 | Command | What it does |
 |---|---|
 | `/security-review` | Full OWASP sweep — subagent pipeline with threat model, hotspot mapping, parallel auditors, design review, attack-chain analysis |
-
----
-
-## Security Review Modes
-
-### Interactive: `/security-review`
-
-Type `/security-review` in any Claude Code session for a full security audit.
-Works best with sonnet or opus — the skill orchestrates subagents internally.
-
-### PR gate: `--diff-base`
-
-Review only files changed in a PR. Fast on haiku (~1-2 min, ~$1):
-
-```bash
-python scripts/security-review-action.py --repo-dir . --diff-base main
-```
-
-The full pipeline runs for context (threat model, hotspots) but findings are
-scoped to changed files. CI example:
-
-```yaml
-name: Security Review
-on: [pull_request]
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - run: npm install -g '@anthropic-ai/claude-code@2.1.108'
-      - run: |
-          python scripts/security-review-action.py \
-            --repo-dir . --diff-base origin/main \
-            --output-summary /tmp/review.md
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-### Full repo scan: `--full-repo`
-
-Deep scan of the entire repository. Sonnet recommended (~10 min, ~$4,
-96% finding precision verified against real codebases):
-
-```bash
-python scripts/security-review-action.py \
-  --repo-dir . --full-repo --model sonnet
-```
-
-Run monthly or quarterly.
 
 ---
 
