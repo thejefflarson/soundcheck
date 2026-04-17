@@ -489,23 +489,49 @@ JUDGE_SYSTEM = (
 )
 
 
-def run_coding_task(prompt: str, model: str, plugin: bool) -> str:
-    """Run a coding task and return the output text."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cmd = [
-            "claude", "-p", "--model", model,
-            "--input-format", "text",
-        ]
-        if plugin:
-            cmd += ["--plugin-dir", str(ROOT)]
-        else:
-            cmd += ["--bare"]
+MAX_RETRIES = 3
+RETRY_DELAY = 5
 
-        result = subprocess.run(
-            cmd, input=prompt, capture_output=True, text=True,
-            timeout=300, cwd=tmpdir,
-        )
-    return result.stdout.strip()
+
+def run_coding_task(prompt: str, model: str, plugin: bool) -> str:
+    """Run a coding task and return the output text. Retries on failure."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                cmd = [
+                    "claude", "-p", "--model", model,
+                    "--input-format", "text",
+                ]
+                if plugin:
+                    cmd += ["--plugin-dir", str(ROOT)]
+                else:
+                    cmd += ["--bare"]
+
+                result = subprocess.run(
+                    cmd, input=prompt, capture_output=True, text=True,
+                    timeout=300, cwd=tmpdir,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return result.stdout.strip()
+                # Non-zero exit or empty output — retry
+                if attempt < MAX_RETRIES - 1:
+                    import time
+                    time.sleep(RETRY_DELAY)
+                    continue
+                return result.stdout.strip() if result.stdout else ""
+        except subprocess.TimeoutExpired:
+            if attempt < MAX_RETRIES - 1:
+                import time
+                time.sleep(RETRY_DELAY)
+                continue
+            return ""
+        except Exception:
+            if attempt < MAX_RETRIES - 1:
+                import time
+                time.sleep(RETRY_DELAY)
+                continue
+            return ""
+    return ""
 
 
 def judge_security(code: str, question: str) -> tuple[str, str]:
@@ -556,49 +582,65 @@ def main() -> int:
     improvements = 0
     total = 0
 
+    errors = 0
     for skill, prompts, judge_q in tests:
         for i, prompt in enumerate(prompts, 1):
             total += 1
-            results = {}
-            reasons = {}
+            try:
+                results = {}
+                reasons = {}
 
-            for mode, use_plugin in [("plugin", True), ("bare", False)]:
-                code = run_coding_task(prompt, args.model, use_plugin)
-                verdict, reason = judge_security(code, judge_q)
-                results[mode] = verdict
-                reasons[mode] = reason
+                for mode, use_plugin in [("plugin", True), ("bare", False)]:
+                    code = run_coding_task(prompt, args.model, use_plugin)
+                    verdict, reason = judge_security(code, judge_q)
+                    results[mode] = verdict
+                    reasons[mode] = reason
 
-            p_safe = results["plugin"] == "safe"
-            b_safe = results["bare"] == "safe"
-            if p_safe:
-                plugin_safe += 1
-            if b_safe:
-                bare_safe += 1
+                p_safe = results["plugin"] == "safe"
+                b_safe = results["bare"] == "safe"
+                if p_safe:
+                    plugin_safe += 1
+                if b_safe:
+                    bare_safe += 1
 
-            if p_safe and not b_safe:
-                delta = "+plugin"
-                improvements += 1
-            elif b_safe and not p_safe:
-                delta = "-plugin"
-            elif p_safe and b_safe:
-                delta = "both"
-            else:
-                delta = "neither"
+                if p_safe and not b_safe:
+                    delta = "+plugin"
+                    improvements += 1
+                elif b_safe and not p_safe:
+                    delta = "-plugin"
+                elif p_safe and b_safe:
+                    delta = "both"
+                else:
+                    delta = "neither"
 
-            # Show the more interesting reason
-            reason = reasons["bare"] if p_safe and not b_safe else reasons["plugin"]
+                # Show the more interesting reason
+                reason = reasons["bare"] if p_safe and not b_safe else reasons["plugin"]
 
-            print(
-                f"{skill:<25} {i:<4} "
-                f"{'✓' if p_safe else '✗':<8} "
-                f"{'✓' if b_safe else '✗':<8} "
-                f"{delta:<7} {reason[:50]}"
-            )
+                print(
+                    f"{skill:<25} {i:<4} "
+                    f"{'✓' if p_safe else '✗':<8} "
+                    f"{'✓' if b_safe else '✗':<8} "
+                    f"{delta:<7} {reason[:50]}"
+                )
+                errors = 0  # reset consecutive error count
+            except Exception as exc:
+                errors += 1
+                print(f"{skill:<25} {i:<4} {'ERR':<8} {'ERR':<8} {'skip':<7} {str(exc)[:50]}")
+                if errors >= 5:
+                    print("\nABORT: 5 consecutive errors — likely auth or connectivity issue.")
+                    break
+        else:
+            continue
+        break  # break outer loop if inner broke
 
     print("-" * 95)
-    print(f"\nPlugin safe: {plugin_safe}/{total} ({plugin_safe*100//total}%)")
-    print(f"Bare safe:   {bare_safe}/{total} ({bare_safe*100//total}%)")
-    print(f"Plugin improved: {improvements}/{total}")
+    completed = plugin_safe + bare_safe > 0 or total > 0
+    if completed and total > 0:
+        print(f"\nPlugin safe: {plugin_safe}/{total} ({plugin_safe*100//total}%)")
+        print(f"Bare safe:   {bare_safe}/{total} ({bare_safe*100//total}%)")
+        print(f"Plugin improved: {improvements}/{total}")
+    else:
+        print("\nNo results collected.")
     print()
     return 0
 

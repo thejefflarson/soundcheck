@@ -77,14 +77,22 @@ def claude_call(
     system_prompt: str,
     model: str = DEFAULT_MODEL,
     timeout: int = 300,
+    max_retries: int = 3,
 ) -> str:
-    return run_claude(
-        user_prompt,
-        system_prompt,
-        model=model,
-        disable_tools=True,
-        timeout=timeout,
-    )
+    for attempt in range(max_retries):
+        try:
+            return run_claude(
+                user_prompt,
+                system_prompt,
+                model=model,
+                disable_tools=True,
+                timeout=timeout,
+            )
+        except (RuntimeError, subprocess.TimeoutExpired):
+            if attempt < max_retries - 1:
+                time.sleep(5)
+                continue
+            raise
 
 
 def find_test_cases(skill_name: str) -> list[Path]:
@@ -279,9 +287,9 @@ def main() -> int:
             if args.fail_fast:
                 print("\nStopping on first failure (--fail-fast)")
                 break
-            if consecutive_cli_errors >= 3:
+            if consecutive_cli_errors >= 5:
                 print(
-                    "\nABORT: 3 consecutive CLI errors with empty output — "
+                    "\nABORT: 5 consecutive CLI errors with empty output — "
                     "likely expired auth or broken `claude` CLI. Run "
                     "`claude /login` and retry."
                 )
