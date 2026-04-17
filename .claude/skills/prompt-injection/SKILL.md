@@ -54,15 +54,25 @@ def build_messages(system_instructions: str, user_input: str, docs: list[str]) -
 
 # Output validation gate — reject responses that echo injection markers
 def validate_llm_output(response: str) -> str:
+    if len(response) > 10_000:
+        raise ValueError("LLM response exceeds size budget.")
     if DISALLOWED.search(response):
         raise ValueError("LLM response contains suspicious instruction language.")
     return response
+
+# Full call site — every code path that uses the LLM response runs it
+# through validate_llm_output BEFORE any downstream action (returning to
+# the caller, rendering, logging, triggering a tool call).
+def answer_question(system_instructions: str, user_input: str, docs: list[str]) -> str:
+    messages = build_messages(system_instructions, user_input, docs)
+    raw = call_llm(messages)
+    return validate_llm_output(raw)   # <- gate before any downstream use
 ```
 
 **Why this works:** Structural role separation prevents user text from overriding system
 instructions. XML delimiters make the data/instruction boundary legible to the model.
-The input and output validation gates catch known injection phrases before they are
-acted on.
+The input and output validation gates catch known injection phrases and bounded-size
+violations before the response triggers any downstream action.
 
 ## Verification
 

@@ -40,12 +40,17 @@ class PartnerProduct(BaseModel):
     price: float
     sku: str
 
+MAX_RESPONSE_BYTES = 1_000_000  # 1 MB — enough for product payloads
+
 def fetch_product(product_id: str) -> PartnerProduct:
     resp = httpx.get(
         f"https://api.partner.com/products/{product_id}",
         timeout=10.0,
+        follow_redirects=False,  # don't chase partner-controlled redirects
     )
     resp.raise_for_status()
+    if len(resp.content) > MAX_RESPONSE_BYTES:
+        raise ValueError("Response exceeds size budget")
     # Validate against schema — rejects unexpected fields and types
     return PartnerProduct.model_validate(resp.json())
 
@@ -63,11 +68,21 @@ type PartnerProduct struct {
     SKU   string  `json:"sku"   validate:"required,alphanum"`
 }
 
+// Dedicated client that doesn't follow redirects — partner-controlled
+// 3xx responses can redirect to SSRF targets or cause header-injection.
+var apiClient = &http.Client{
+    Timeout: 10 * time.Second,
+    CheckRedirect: func(*http.Request, []*http.Request) error {
+        return http.ErrUseLastResponse
+    },
+}
+
 func fetchProduct(id string) (*PartnerProduct, error) {
-    resp, err := http.Get("https://api.partner.com/products/" + url.PathEscape(id))
+    resp, err := apiClient.Get("https://api.partner.com/products/" + url.PathEscape(id))
     if err != nil { return nil, err }
     defer resp.Body.Close()
     var p PartnerProduct
+    // LimitReader caps the response body to prevent resource exhaustion.
     if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&p); err != nil {
         return nil, fmt.Errorf("invalid response: %w", err)
     }

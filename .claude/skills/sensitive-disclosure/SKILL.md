@@ -64,13 +64,14 @@ server-side only.
 
 ## Verification
 
-Confirm these properties hold:
+Confirm these properties hold for every relevant pattern present in the code under
+review (each criterion applies only when its pattern is actually present):
 
 - [ ] No PII field (SSN, DOB, email, phone, address, health record) reaches an LLM API call site without first passing through a redaction or pseudonymization step
-- [ ] System prompts contain only constants loaded from a secrets-manager or environment-backed config, never hardcoded credential literals or interpolated secret values
+- [ ] System prompts contain only constants loaded from a secrets-manager or environment-backed config, never hardcoded credential literals or interpolated secret values — only applies if the code references credentials (API keys, DB passwords) near the prompt construction
 - [ ] Every code path that returns an LLM response to a caller routes the response through an output-redaction helper before it leaves the process
-- [ ] Conversation history and memory stores are partitioned per user identity, so one session's context cannot be retrieved from another session
-- [ ] Log or telemetry statements that receive a prompt or completion variable pass it through a redaction helper before emission
+- [ ] If the code persists conversation history or writes to a memory/vector store, records are keyed or partitioned by user identity so one session's context cannot be retrieved by another — skip this criterion when the code is a stateless single-request handler with no history/memory
+- [ ] If the code contains logging or telemetry statements that receive a prompt or completion variable, the variable is passed through a redaction helper before emission — skip this criterion when the code has no logging of prompts or completions
 
 ## References
 

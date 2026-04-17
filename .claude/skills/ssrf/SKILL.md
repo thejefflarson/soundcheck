@@ -41,8 +41,11 @@ BLOCKED_NETS = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("169.254.0.0/16"),  # link-local / cloud metadata
+    ipaddress.ip_network("169.254.0.0/16"),  # IPv4 link-local / cloud metadata (AWS/GCP/Azure IMDS)
     ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),         # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),        # IPv6 unique local (fd00::)
+    ipaddress.ip_network("fe80::/10"),       # IPv6 link-local
 ]
 
 def safe_fetch(url: str) -> bytes:
@@ -89,7 +92,7 @@ attackers from chaining an allowed host to an internal target via 302.
 ## Verification
 
 - [ ] Every outbound HTTP request using a caller-supplied URL validates the scheme, host, and resolved IP against an allowlist or blocklist before the request is sent
-- [ ] Cloud metadata addresses (169.254.169.254, fd00::, link-local ranges) are explicitly blocked
+- [ ] Cloud metadata / link-local addresses are blocked by one of: (a) an explicit CIDR entry covering 169.254.0.0/16 and fe80::/10 or fc00::/7; or (b) language-idiomatic checks that cover the same ranges (Java `InetAddress.isLinkLocalAddress()` + `isSiteLocalAddress()`; Go `ip.IsLinkLocalUnicast()` + `ip.IsPrivate()`). Declaring a blocklist but never evaluating it does NOT satisfy this criterion — show the check.
 - [ ] HTTP redirects are either disabled or each redirect target is re-validated against the same allowlist
 - [ ] DNS resolution results are checked for private/loopback/link-local IPs before connecting
 

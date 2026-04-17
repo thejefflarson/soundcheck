@@ -75,11 +75,11 @@ def verify_artifact(artifact: bytes, provided_sig: str) -> bytes:
 
 Confirm the following *properties* hold for every relevant pattern present in the code under review (language-agnostic; criteria apply only to patterns actually present):
 
-- [ ] For every deserialization call present (pickle, marshal, shelve, Java `ObjectInputStream.readObject`, Ruby `Marshal.load`, PHP `unserialize`, .NET `BinaryFormatter`, etc.), the input source is a trusted local constant — never a network payload, request body, file upload, or other attacker-reachable bytes
+- [ ] For every *code-executing* deserializer call (pickle, marshal, shelve, Java `ObjectInputStream.readObject`, Ruby `Marshal.load`, PHP `unserialize`, .NET `BinaryFormatter`, unsafe `yaml.load`), the input source is a trusted local constant — never a network payload, request body, file upload, or other attacker-reachable bytes. Safe-by-default formats (JSON, `yaml.safe_load`, protobuf) may accept untrusted input provided the next criterion is met.
 - [ ] For every YAML load present, the call uses a safe loader (`yaml.safe_load`, `Loader=SafeLoader`, SnakeYAML `SafeConstructor`, etc.) that disallows arbitrary type/constructor instantiation
 - [ ] Every deserialized object produced from untrusted input (JSON, YAML, XML, form data, message queue payload) is validated against an explicit schema — field names, types, and allowed values — before any field is read or passed to downstream logic. No untrusted deserialized object reaches business logic unvalidated
 - [ ] For every software-update, plugin-load, or CI-artifact download present in the code, the artifact's cryptographic signature or digest is verified against a trusted public key or pinned hash before the artifact is executed, loaded, or written to a trusted path
-- [ ] For every signing or verification key referenced in the code, the key material is read from an environment variable, secrets manager, or OS keystore — never hardcoded as a literal in source
+- [ ] For every signing or verification key or pinned hash referenced in the code, the material is read from an environment variable, secrets manager, OS keystore, or a build-time constant baked into the binary — function parameters whose origin the reader can't see do not satisfy this; show the load site
 
 ## References
 
