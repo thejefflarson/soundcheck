@@ -57,7 +57,7 @@ Confirm the following *properties* hold (language-agnostic):
 
 - [ ] Every resource lookup by caller-supplied identifier is gated by an ownership or role predicate before the resource is returned, mutated, or acted on — regardless of whether the check lives in a handler, interceptor, filter, annotation, decorator, or middleware
 - [ ] Privileged routes enforce role membership through a reusable, centrally-declared mechanism (middleware, filter chain, annotation, decorator, policy) attached at the route/controller declaration — not via ad-hoc `if` checks inside individual handler bodies
-- [ ] Ownership/authorization failures return an indistinguishable "not found" response (e.g. HTTP 404) rather than a distinct "forbidden" response, to prevent resource enumeration
+- [ ] **Ownership** (per-instance IDOR) failures return an indistinguishable "not found" response (e.g. HTTP 404) rather than a distinct "forbidden" response, to prevent resource enumeration. Role-missing failures on a privileged route (e.g. `/admin/*`) may return 403 because the route itself is public knowledge — only the *instance-level* check needs to hide behind 404.
 
 ## References
 

@@ -26,17 +26,9 @@ When this skill invokes, flag the vulnerable code and explain the risk. Show the
 
 **Critical:** The confidence threshold and high-stakes domain list MUST appear in an
 `if/else` branch that actually diverges behavior — defining them as constants without
-branching on them is the exact bug this skill prevents. Every rewrite must contain:
-
-```
-if confidence < THRESHOLD or domain in HIGH_STAKES:
-    route_to_human_review()
-else:
-    return_with_disclaimer()
-```
-
-If the rewrite defines `CONFIDENCE_THRESHOLD` or `HIGH_STAKES_DOMAINS` but never
-uses them in a conditional, the rewrite is still vulnerable.
+branching on them is the exact bug this skill prevents. If the rewrite defines
+`CONFIDENCE_THRESHOLD` or `HIGH_STAKES_DOMAINS` but never uses them in a conditional,
+the rewrite is still vulnerable.
 
 **Secure pattern:**
 
@@ -48,6 +40,7 @@ CONFIDENCE_THRESHOLD = 0.80
 
 @dataclass
 class LLMResult:
+    prompt: str         # original prompt/input MUST be captured for audit
     content: str
     confidence: float   # 0.0–1.0; derive from logprobs or a self-eval prompt
     domain: str
@@ -57,31 +50,29 @@ DISCLAIMER = (
     "before acting on this information._"
 )
 
+def audit_log_for_review(result: LLMResult) -> None:
+    # All three pieces — prompt, content, confidence — must reach the log.
+    logger.info("llm_review", extra={
+        "prompt": result.prompt, "content": result.content,
+        "confidence": result.confidence, "domain": result.domain,
+    })
+
 def present_llm_result(result: LLMResult) -> dict:
-    requires_review = (
-        result.domain in HIGH_STAKES_DOMAINS
-        or result.confidence < CONFIDENCE_THRESHOLD
-    )
-
+    requires_review = (result.domain in HIGH_STAKES_DOMAINS
+                       or result.confidence < CONFIDENCE_THRESHOLD)
+    status = "pending_review" if requires_review else "ai_generated"
     if requires_review:
-        audit_log_for_review(result)    # queue for human expert review
-        return {
-            "content": result.content + DISCLAIMER,
-            "status": "pending_review",
-            "confidence": result.confidence,
-        }
+        audit_log_for_review(result)
+    # Every return site attaches DISCLAIMER — no raw output reaches callers.
+    return {"content": result.content + DISCLAIMER,
+            "status": status, "confidence": result.confidence}
 
-    return {
-        "content": result.content + DISCLAIMER,
-        "status": "ai_generated",
-        "confidence": result.confidence,
-    }
-
-# Never auto-deploy — always require a human approval step
-def review_and_merge(pr_id: int, llm_review: LLMResult) -> None:
-    audit_log_for_review(llm_review)
-    notify_human_reviewer(pr_id, llm_review.content)
-    # execution stops here; human triggers merge via separate workflow
+# High-stakes pipelines branch on confidence too, then halt for human review.
+def review_and_maybe_merge(pr_id: int, r: LLMResult) -> None:
+    audit_log_for_review(r)
+    if r.confidence < CONFIDENCE_THRESHOLD:
+        notify_human_reviewer(pr_id, r.content + DISCLAIMER); return
+    notify_human_reviewer(pr_id, r.content + DISCLAIMER)
 ```
 
 **Why this works:** Confidence gating routes low-certainty or high-stakes output to

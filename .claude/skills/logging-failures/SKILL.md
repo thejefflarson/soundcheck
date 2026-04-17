@@ -78,7 +78,7 @@ Confirm the following *properties* hold (language-agnostic):
 - [ ] Credential-like field names (password, passwd, token, secret, authorization, api_key, session) never appear as values in any log record — they are either omitted or replaced with a redaction marker before the log call
 - [ ] Every user-controlled string value reaching a log sink passes through a CRLF/newline stripping step — no field is interpolated raw, including ones that "look safe" like usernames
 - [ ] Log records are emitted as structured key/value data (JSON object, structured logger fields, or equivalent) — not as a single interpolated message string that a SIEM would have to regex-parse
-- [ ] Each record carries an event-type identifier and a subject identifier (user id, session id, or explicit "anonymous") — the subject field is never silently omitted
+- [ ] Each record carries an event-type identifier and an **actor** identifier — a non-null field naming who or what triggered the event (user id, session id, explicit `"anonymous"`, or `"system"` for server-initiated jobs). The actor field is never silently omitted from any security event.
 
 ## References
 

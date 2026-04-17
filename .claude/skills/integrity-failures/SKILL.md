@@ -55,9 +55,17 @@ def deserialize_update(raw: bytes) -> dict:
         raise ValueError(f"Schema violation: {exc.message}") from exc
     return data
 
-# --- Safe YAML loading ---
+# --- Safe YAML loading + schema validation ---
+CONFIG_SCHEMA = {
+    "type": "object",
+    "properties": {"host": {"type": "string"},
+                   "port": {"type": "integer", "minimum": 1, "maximum": 65535}},
+    "required": ["host", "port"], "additionalProperties": False,
+}
 def load_config(yaml_str: str) -> dict:
-    return yaml.safe_load(yaml_str)     # safe_load disallows Python constructors
+    data = yaml.safe_load(yaml_str)
+    validate(instance=data, schema=CONFIG_SCHEMA)  # YAML must validate too
+    return data
 
 # --- Signature verification before trusting any downloaded artifact ---
 SIGNING_KEY = os.environb[b"ARTIFACT_HMAC_KEY"]
