@@ -26,7 +26,11 @@ metadata APIs (169.254.169.254), and access to services behind firewalls.
 ## Fix immediately
 
 Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+these properties. **Proxy, webhook, and URL-preview features are the highest-risk
+shapes** — the scheme/host/IP/redirect checks must actually run at the call site
+before the outbound request; a comment saying "URL should be validated" or
+principles repeated in prose do not satisfy anything if the code just calls
+`http.Get(userURL)`.
 
 1. **Scheme is restricted to `https` (and maybe `http` for trusted internal use).**
    Reject `file:`, `gopher:`, `ftp:`, `dict:`, and other schemes that SSRF toolkits

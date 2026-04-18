@@ -41,6 +41,12 @@ these properties:
 4. **Irreversible actions cannot be invoked transitively through LLM-generated
    parameters.** A tool named `run_sql` that accepts arbitrary queries violates
    this; a tool named `archive_record(id)` that only issues a scoped update does not.
+5. **When the task seems to require LLM-generated SQL, shell commands, or arbitrary
+   code strings, redesign the tool interface.** Expose typed parameters (table
+   name, filter fields, numeric limits, path components) and reject raw strings
+   at the handler boundary. A regex/denylist over a raw query string is
+   bypassable through encoding, Unicode, or patterns the author didn't
+   anticipate — it is not a substitute for a structured parameter schema.
 
 Anchor — shape, not implementation:
 
