@@ -9,7 +9,9 @@ description: Use when writing login flows, session management, password storage,
 
 ## What this checks
 
-Protects identity and session integrity. Weak password storage, flawed JWT handling, and sessions that survive logout let attackers impersonate users, escalate privileges, and persist after credential rotation.
+Protects identity and session integrity. Weak password storage, flawed JWT handling,
+and sessions that survive logout let attackers impersonate users, escalate privileges,
+and persist after credential rotation.
 
 ## Vulnerable patterns
 
@@ -23,65 +25,42 @@ For hardcoded API keys/passwords in source, see `hardcoded-secrets`.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Signing keys come from outside the source tree** — environment variable, secret
+   manager, or KMS. Enforce a minimum length or entropy check at load time so a
+   misconfigured deploy fails loudly rather than silently using a 4-byte secret.
+2. **JWT verification pins the accepted algorithm(s) to an explicit allowlist**
+   that rejects `none` and rejects algorithm switching between symmetric and
+   asymmetric families (the classic HS256-vs-RS256 public-key-as-HMAC attack).
+   Whether expressed as `algorithms=[...]`, `.withAlgorithm(...)`,
+   `Validation::new(Algorithm::HS256)`, or equivalent, the check must be
+   algorithm-specific.
+3. **Logout invalidates credentials server-side.** Either delete a server session
+   record, add the token to a revocation list (DB, Redis, in-memory set), or
+   rotate a per-user signing key. Short token expiry alone does not satisfy this
+   — a stolen token works until it expires. The code must demonstrate an active
+   revocation mechanism.
+4. **Password comparisons and API-key comparisons are constant-time** — use
+   `hmac.compare_digest` or the language equivalent, never `==`.
+5. **Login has a rate limit or lockout.** Credential stuffing is cheap; unbounded
+   guess rates make every leaked password list a working brute-force dictionary.
 
-```python
-import os
-import hmac
-import bcrypt
-import jwt
-from datetime import datetime, timedelta, timezone
+Anchor — shape, not implementation:
 
-# --- Password storage ---
-def hash_password(password: str) -> bytes:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
-
-def verify_password(password: str, hashed: bytes) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed)
-
-# --- JWT: secret from env, short expiry, no alg:none ---
-JWT_SECRET = os.environ["JWT_SECRET"]          # min 32 random bytes
-JWT_ALGORITHM = "HS256"
-
-def create_token(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-        "iat": datetime.now(timezone.utc),
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-def verify_token(token: str) -> dict:
-    # algorithms list prevents alg-switching attacks
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-
-# --- Session invalidation on logout ---
-REVOKED: set[str] = set()   # replace with Redis/DB in production
-
-def logout(token: str) -> None:
-    REVOKED.add(token)
-
-def is_valid_session(token: str) -> bool:
-    if token in REVOKED:
-        return False
-    try:
-        verify_token(token)
-        return True
-    except jwt.PyJWTError:
-        return False
-
-# --- Token comparison (timing-safe) ---
-def verify_api_key(provided: str, stored: str) -> bool:
-    return hmac.compare_digest(provided.encode(), stored.encode())
 ```
+secret = getenv("JWT_SECRET"); require(len(secret) >= 32)     # loaded + checked
+token  = encode(claims, secret, alg=HS256)                    # exp set
+decoded = decode(token, secret, algorithms=[HS256])           # alg pinned
 
-**Why this works:** bcrypt with rounds=12 makes offline cracking infeasible; env-sourced secrets keep credentials out of source; explicit algorithm list blocks alg:none; revocation ensures logout is real.
+logout(token): revocation.add(token)                          # server-side invalidation
+verify(t):    return t not in revocation and decode(t)        # revocation checked
+```
 
 ## Verification
 
-Confirm the following *properties* hold (language-agnostic):
+Confirm these properties hold (language-agnostic):
 
 - [ ] JWT signing/verification keys are sourced from outside the source tree (environment variable, secret manager, KMS) AND the code enforces a minimum length/entropy check at load time — a comment asserting "must be ≥32 bytes" without a runtime check does not satisfy this
 - [ ] JWT verification pins the accepted algorithm(s) to an explicit allowlist that rejects `none` and rejects algorithm switching between symmetric and asymmetric families — whether expressed as a `algorithms=[...]` parameter, a `.withAlgorithm(...)` builder call, a `Validation::new(Algorithm::HS256)` constructor, or equivalent

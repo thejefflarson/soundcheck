@@ -9,7 +9,9 @@ description: Use when designing authentication flows, implementing rate limiting
 
 ## What this checks
 
-Catches security controls that were never designed in. Missing rate limiting, skippable workflow steps, and unenforced re-authentication enable account takeover, fraud, and privilege escalation.
+Catches security controls that were never designed in. Missing rate limiting,
+skippable workflow steps, and unenforced re-authentication enable account takeover,
+fraud, and privilege escalation.
 
 ## Vulnerable patterns
 
@@ -20,65 +22,46 @@ Catches security controls that were never designed in. Missing rate limiting, sk
 
 ## Fix immediately
 
-Rewrite the vulnerable code using the pattern below. Explain the change, then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-```python
-import time
-import hmac
-from collections import defaultdict
+1. **Every credential-accepting endpoint has a rate limit or lockout keyed on a
+   caller-controlled identifier** (IP, username, email, or account id). Apply to
+   *every* such endpoint — login, password reset, MFA verify, token exchange,
+   re-auth — not just login. Unlimited retries are never acceptable.
+2. **Authentication failure responses do not distinguish "user not found" from
+   "wrong password"** — same message, same status code, same timing. Always
+   compute the hash even when the user is missing (compare against a dummy hash
+   to equalize latency); short-circuit branches leak account existence.
+3. **Sensitive state changes (password change, email change, fund transfer, account
+   deletion, permission grant) require a check stronger than "session exists"** —
+   re-prompt for the current password, verify a step-up token, or require MFA.
+4. **Multi-step workflows read the current step from server-side state** —
+   session, database, or a signed token — never from a client-supplied parameter
+   like `?step=confirm`. The server owns the progression.
+5. **No security-relevant decision (lockout status, step progression,
+   authorization level) is read from request parameters, cookies, or headers that
+   the client can freely modify.**
 
-# Token bucket rate limiter
-_buckets: dict[str, tuple[float, int]] = defaultdict(lambda: (time.monotonic(), 10))
+Anchor — shape, not implementation:
 
-def check_rate_limit(key: str, capacity: int = 10, refill_rate: float = 1.0) -> bool:
-    last, tokens = _buckets[key]
-    now = time.monotonic()
-    tokens = min(capacity, tokens + (now - last) * refill_rate)
-    _buckets[key] = (now, tokens)
-    if tokens < 1:
-        return False
-    _buckets[key] = (now, tokens - 1)
-    return True
-
-FAILED_ATTEMPTS: dict[str, int] = defaultdict(int)
-LOCKOUT_THRESHOLD = 5
-
-def login(username: str, password: str, ip: str) -> dict:
-    if not check_rate_limit(f"login:{ip}"):
-        return {"error": "Too many requests"}, 429
-    if FAILED_ATTEMPTS[username] >= LOCKOUT_THRESHOLD:
-        return {"error": "Account locked. Contact support."}, 403
-    user = db.get_user(username)
-    pw_hash = hash_password(password)
-    stored = user.password_hash if user else pw_hash  # dummy hash equalizes timing
-    valid = hmac.compare_digest(pw_hash, stored) and user is not None
-    if not valid:
-        FAILED_ATTEMPTS[username] += 1
-        return {"error": "Invalid credentials"}, 401
-    FAILED_ATTEMPTS[username] = 0
-    return {"token": create_session(user)}, 200
-
-def require_reauth(user_id: str, password: str) -> bool:
-    """Gate sensitive operations: email change, fund transfer, account deletion."""
-    if not check_rate_limit(f"reauth:{user_id}"):
-        return False
-    user = db.get_user_by_id(user_id)
-    pw_hash = hash_password(password)
-    stored = user.password_hash if user else pw_hash
-    return hmac.compare_digest(pw_hash, stored) and user is not None
 ```
+endpoint login(user, pw, ip):
+    require(rate_limiter.allow("login:" + ip))           # every cred endpoint
+    require(not is_locked(user))
+    valid = constant_time_compare(hash(pw), stored_or_dummy)
+    if not valid: record_failure(user); respond_uniform_error()
+    ...
 
-**Why this works:** Rate limiting prevents brute force; uniform errors prevent user enumeration; re-auth gates privilege operations inside active sessions.
-
-**Common pitfalls to avoid:**
-
-- **Timing:** Always compute the hash even when the user is missing -- compare against a dummy hash to equalize timing. Never short-circuit via `user and hmac.compare_digest(...)`.
-- **Step state:** Read the current step from server-side state (session/DB), never from a client-supplied parameter like `step=confirm`.
-- **Rate limits:** Apply to EVERY credential-accepting endpoint, not just login -- include reset, purchase, re-auth, and any endpoint accepting a password or OTP.
+endpoint change_email(new_email, current_pw):
+    require(reauth(session.user, current_pw))            # step up, not just session
+    ...
+```
 
 ## Verification
 
-Confirm the following *properties* hold for every endpoint present in the code under review (language-agnostic; criteria apply only to patterns actually present):
+Confirm these properties hold for every endpoint present (language-agnostic;
+criteria apply only to patterns actually present):
 
 - [ ] Every credential-accepting endpoint present (login, password reset, MFA verify, token exchange) is gated by at least one rate-limiting or lockout mechanism keyed on a caller-controlled identifier (IP, username, email, or account id) — unlimited retries are not permitted
 - [ ] Authentication failure responses do not distinguish "user not found" from "wrong password" via message text, status code, or response timing
