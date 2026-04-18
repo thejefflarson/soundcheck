@@ -25,82 +25,37 @@ data as trusted leads to injection, deserialization attacks, and business logic 
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every response is validated against an explicit schema** — typed struct, Pydantic
+   model, JSON Schema, protobuf message, or equivalent — before any field reaches
+   business logic. Optional fields get defaults; unexpected fields are rejected or
+   ignored, not silently propagated.
+2. **External data never reaches injection sinks via string interpolation.** SQL
+   goes through parameterized queries; HTML goes through an auto-escaping template
+   engine; shell goes through argv arrays. Validation does not exempt the sink.
+3. **Response size is bounded and the request has a timeout.** A partner API can
+   stream gigabytes or hang forever; both eat resources and can DoS the caller.
+4. **Redirects are not followed blindly.** Either disable redirects, or re-validate
+   each hop against the same allowlist used for the initial URL. Partner-controlled
+   3xx responses can redirect to SSRF targets or attacker-controlled hosts.
 
-```python
-# Python — validate and sanitize external API data
-import httpx
-from pydantic import BaseModel, ValidationError
+Anchor — shape, not implementation:
 
-class PartnerProduct(BaseModel):
-    name: str
-    price: float
-    sku: str
-
-MAX_RESPONSE_BYTES = 1_000_000  # 1 MB — enough for product payloads
-
-def fetch_product(product_id: str) -> PartnerProduct:
-    resp = httpx.get(
-        f"https://api.partner.com/products/{product_id}",
-        timeout=10.0,
-        follow_redirects=False,  # don't chase partner-controlled redirects
-    )
-    resp.raise_for_status()
-    if len(resp.content) > MAX_RESPONSE_BYTES:
-        raise ValueError("Response exceeds size budget")
-    # Validate against schema — rejects unexpected fields and types
-    return PartnerProduct.model_validate(resp.json())
-
-# Use validated data in queries via parameterized statements
-product = fetch_product("abc123")
-db.execute("INSERT INTO products (name, price, sku) VALUES (?, ?, ?)",
-           (product.name, product.price, product.sku))
 ```
-
-```go
-// Go — typed struct + explicit field extraction
-type PartnerProduct struct {
-    Name  string  `json:"name" validate:"required,max=200"`
-    Price float64 `json:"price" validate:"required,gte=0"`
-    SKU   string  `json:"sku"   validate:"required,alphanum"`
-}
-
-// Dedicated client that doesn't follow redirects — partner-controlled
-// 3xx responses can redirect to SSRF targets or cause header-injection.
-var apiClient = &http.Client{
-    Timeout: 10 * time.Second,
-    CheckRedirect: func(*http.Request, []*http.Request) error {
-        return http.ErrUseLastResponse
-    },
-}
-
-func fetchProduct(id string) (*PartnerProduct, error) {
-    resp, err := apiClient.Get("https://api.partner.com/products/" + url.PathEscape(id))
-    if err != nil { return nil, err }
-    defer resp.Body.Close()
-    var p PartnerProduct
-    // LimitReader caps the response body to prevent resource exhaustion.
-    if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&p); err != nil {
-        return nil, fmt.Errorf("invalid response: %w", err)
-    }
-    if err := validate.Struct(p); err != nil { return nil, err }
-    return &p, nil
-}
+resp = http_get(url, timeout=10, follow_redirects=False)
+require(len(resp.body) < MAX_BYTES)
+data = validate(parse(resp.body), schema=ExpectedShape)   # reject unknowns
+use(data)                                                  # only validated fields reach sinks
 ```
-
-**Why this works:** Schema validation ensures external data matches expected types and
-constraints before it enters the application. Parameterized queries prevent injection
-even if validation is bypassed. Response size limits prevent resource exhaustion.
 
 ## Verification
 
 - [ ] Every response from an external API is validated against a schema (typed struct, Pydantic model, JSON Schema, or equivalent) before any field is used in queries, rendering, or business logic
-- [ ] External API data never reaches SQL, shell, template, or code execution sinks via string interpolation — only through parameterized interfaces
+- [ ] External API data never reaches SQL, shell, template, or code-execution sinks via string interpolation — only through parameterized/auto-escaping interfaces
 - [ ] HTTP responses from external APIs are size-limited to prevent resource exhaustion
-- [ ] Redirects from external API responses are not followed blindly — redirect URLs are validated or redirects are disabled
+- [ ] Redirects from external API responses are either disabled or re-validated at each hop against the same allowlist used for the initial URL
 
 ## References
 

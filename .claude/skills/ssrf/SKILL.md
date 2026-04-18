@@ -25,75 +25,40 @@ metadata APIs (169.254.169.254), and access to services behind firewalls.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Scheme is restricted to `https` (and maybe `http` for trusted internal use).**
+   Reject `file:`, `gopher:`, `ftp:`, `dict:`, and other schemes that SSRF toolkits
+   exploit.
+2. **Host is checked against an allowlist, and the resolved IP is checked against a
+   blocklist covering private, loopback, and link-local ranges** — IPv4
+   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, `169.254.0.0/16`
+   and IPv6 `::1/128`, `fc00::/7`, `fe80::/10`. Resolve-then-check catches DNS
+   rebinding; an allowlisted hostname can still resolve to `169.254.169.254`.
+   Language-idiomatic checks that cover the same ranges (Java
+   `isLinkLocalAddress() + isSiteLocalAddress()`; Go `IsLinkLocalUnicast() +
+   IsPrivate()`) are equivalent to the explicit CIDR form.
+3. **Redirects are disabled, or each redirect target is re-validated against the
+   same allowlist.** A lone allowlisted host can still 302 you to an internal IP.
+4. **The check actually runs.** A blocklist declared and never evaluated does not
+   satisfy any of the above — reviewers should see the comparison.
 
-```python
-# Python — allowlist + IP validation
-from urllib.parse import urlparse
-import ipaddress, socket
+Anchor — shape, not implementation:
 
-ALLOWED_SCHEMES = {"https"}
-ALLOWED_HOSTS = {"api.trusted.com", "hooks.slack.com"}
-BLOCKED_NETS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("169.254.0.0/16"),  # IPv4 link-local / cloud metadata (AWS/GCP/Azure IMDS)
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("::1/128"),         # IPv6 loopback
-    ipaddress.ip_network("fc00::/7"),        # IPv6 unique local (fd00::)
-    ipaddress.ip_network("fe80::/10"),       # IPv6 link-local
-]
-
-def safe_fetch(url: str) -> bytes:
-    parsed = urlparse(url)
-    if parsed.scheme not in ALLOWED_SCHEMES:
-        raise ValueError(f"Scheme not allowed: {parsed.scheme}")
-    host = parsed.hostname
-    if host not in ALLOWED_HOSTS:
-        # Resolve and check IP even for "allowed" hosts to block DNS rebinding
-        ip = ipaddress.ip_address(socket.getaddrinfo(host, None)[0][4][0])
-        if any(ip in net for net in BLOCKED_NETS):
-            raise ValueError(f"Host resolves to blocked network: {ip}")
-    return httpx.get(url, follow_redirects=False).content
 ```
-
-```go
-// Go — validate before dialing
-func safeFetch(rawURL string) ([]byte, error) {
-    u, err := url.Parse(rawURL)
-    if err != nil || u.Scheme != "https" {
-        return nil, fmt.Errorf("invalid or non-https URL")
-    }
-    ips, _ := net.LookupIP(u.Hostname())
-    for _, ip := range ips {
-        if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-            return nil, fmt.Errorf("blocked internal IP: %s", ip)
-        }
-    }
-    client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-        return http.ErrUseLastResponse // don't follow redirects
-    }}
-    resp, err := client.Get(rawURL)
-    if err != nil { return nil, err }
-    defer resp.Body.Close()
-    return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-}
+u = parse(url)
+require(u.scheme in ALLOWED_SCHEMES)
+require(u.host in ALLOWED_HOSTS)
+require(resolve(u.host) not in BLOCKED_NETS)   # defeats DNS rebinding
+fetch(u, follow_redirects=False)               # or re-validate each hop
 ```
-
-**Why this works:** The allowlist restricts which hosts the server can contact. IP
-validation after DNS resolution blocks requests to internal networks even if the
-hostname resolves to a private IP (DNS rebinding). Disabling redirects prevents
-attackers from chaining an allowed host to an internal target via 302.
 
 ## Verification
 
 - [ ] Every outbound HTTP request using a caller-supplied URL validates the scheme, host, and resolved IP against an allowlist or blocklist before the request is sent
-- [ ] Cloud metadata / link-local addresses are blocked by one of: (a) an explicit CIDR entry covering 169.254.0.0/16 and fe80::/10 or fc00::/7; or (b) language-idiomatic checks that cover the same ranges (Java `InetAddress.isLinkLocalAddress()` + `isSiteLocalAddress()`; Go `ip.IsLinkLocalUnicast()` + `ip.IsPrivate()`). Declaring a blocklist but never evaluating it does NOT satisfy this criterion — show the check.
-- [ ] HTTP redirects are either disabled or each redirect target is re-validated against the same allowlist
+- [ ] Cloud metadata and link-local addresses are blocked — either via explicit CIDR entries covering `169.254.0.0/16`, `fe80::/10`, and `fc00::/7`, or via language-idiomatic checks that cover the same ranges. Declaring a list without evaluating it does not satisfy this
+- [ ] HTTP redirects are disabled, or each redirect target is re-validated against the same allowlist
 - [ ] DNS resolution results are checked for private/loopback/link-local IPs before connecting
 
 ## References
