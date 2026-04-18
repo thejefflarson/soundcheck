@@ -9,7 +9,9 @@ description: Use when writing deserialization code, processing pickled or marsha
 
 ## What this checks
 
-Protects against arbitrary code execution and tampered artifacts. Deserializing untrusted data with `pickle` or unsafe YAML loaders gives attackers remote code execution; unsigned software updates allow supply-chain compromise.
+Protects against arbitrary code execution and tampered artifacts. Deserializing
+untrusted data with `pickle` or unsafe YAML loaders gives attackers remote code
+execution; unsigned software updates allow supply-chain compromise.
 
 ## Vulnerable patterns
 
@@ -18,76 +20,46 @@ Protects against arbitrary code execution and tampered artifacts. Deserializing 
 - `data = json.loads(body); eval(data["expr"])` — deserializing into executable eval
 - `urllib.request.urlretrieve(update_url, "update.bin")` — no signature verification
 - Trusting `__reduce__` or `__wakeup` output from user-controlled serialized blobs
+- JSON/YAML deserialized and returned to callers with no field-level schema check
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **No code-executing deserializer touches untrusted input.** Replace `pickle`,
+   `marshal`, `shelve`, Java `ObjectInputStream`, Ruby `Marshal.load`, PHP
+   `unserialize`, .NET `BinaryFormatter`, and unsafe `yaml.load` with a
+   data-only format: JSON, `yaml.safe_load`, protobuf, CBOR without tags.
+2. **Every deserialized object from untrusted input is validated against an
+   explicit schema** — field names, types, allowed values — before any field is
+   read by business logic. Applies to JSON, YAML, XML, form bodies, message-queue
+   payloads, binary bincode/msgpack; format doesn't matter.
+3. **Artifacts are signature- or digest-verified before trust.** Software updates,
+   plugin loads, CI-artifact downloads: check a cryptographic signature against a
+   trusted public key, or a digest against a pinned hash, before executing or
+   loading.
+4. **Keys and pinned hashes come from outside the source tree** — environment
+   variable, secrets manager, OS keystore, or a build-time constant baked into
+   the binary. A value received as a function parameter with no visible origin
+   does not demonstrate this.
 
-```python
-import json
-import hashlib
-import hmac
-import os
-import yaml
-from jsonschema import validate, ValidationError
+Anchor — shape, not implementation:
 
-# --- Safe deserialization: JSON + schema, never pickle ---
-UPDATE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "version": {"type": "string", "pattern": r"^\d+\.\d+\.\d+$"},
-        "payload": {"type": "string"},
-    },
-    "required": ["version", "payload"],
-    "additionalProperties": False,
-}
-
-def deserialize_update(raw: bytes) -> dict:
-    try:
-        data = json.loads(raw)          # never pickle.loads
-    except json.JSONDecodeError as exc:
-        raise ValueError("Invalid JSON") from exc
-    try:
-        validate(instance=data, schema=UPDATE_SCHEMA)
-    except ValidationError as exc:
-        raise ValueError(f"Schema violation: {exc.message}") from exc
-    return data
-
-# --- Safe YAML loading + schema validation ---
-CONFIG_SCHEMA = {
-    "type": "object",
-    "properties": {"host": {"type": "string"},
-                   "port": {"type": "integer", "minimum": 1, "maximum": 65535}},
-    "required": ["host", "port"], "additionalProperties": False,
-}
-def load_config(yaml_str: str) -> dict:
-    data = yaml.safe_load(yaml_str)
-    validate(instance=data, schema=CONFIG_SCHEMA)  # YAML must validate too
-    return data
-
-# --- Signature verification before trusting any downloaded artifact ---
-SIGNING_KEY = os.environb[b"ARTIFACT_HMAC_KEY"]
-
-def verify_artifact(artifact: bytes, provided_sig: str) -> bytes:
-    expected = hmac.new(SIGNING_KEY, artifact, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, provided_sig):
-        raise ValueError("Artifact signature invalid — refusing to load")
-    return artifact
 ```
-
-**Why this works:** `json.loads` cannot execute code; `yaml.safe_load` disables arbitrary Python constructors; HMAC verification ensures artifacts haven't been tampered with before they are trusted.
+data = json_load(untrusted_bytes)          # never pickle/marshal/yaml.load
+validate(data, schema=EXPLICIT_SCHEMA)     # reject unknown fields and bad types
+use(data)                                  # safe only after validation
+```
 
 ## Verification
 
-Confirm the following *properties* hold for every relevant pattern present in the code under review (language-agnostic; criteria apply only to patterns actually present):
+Confirm these properties hold for every relevant pattern present:
 
-- [ ] For every *code-executing* deserializer call (pickle, marshal, shelve, Java `ObjectInputStream.readObject`, Ruby `Marshal.load`, PHP `unserialize`, .NET `BinaryFormatter`, unsafe `yaml.load`), the input source is a trusted local constant — never a network payload, request body, file upload, or other attacker-reachable bytes. Safe-by-default formats (JSON, `yaml.safe_load`, protobuf) may accept untrusted input provided the next criterion is met.
-- [ ] For every YAML load present, the call uses a safe loader (`yaml.safe_load`, `Loader=SafeLoader`, SnakeYAML `SafeConstructor`, etc.) that disallows arbitrary type/constructor instantiation
-- [ ] Every deserialized object produced from untrusted input (JSON, YAML, XML, form data, message queue payload) is validated against an explicit schema — field names, types, and allowed values — before any field is read or passed to downstream logic. No untrusted deserialized object reaches business logic unvalidated
-- [ ] For every software-update, plugin-load, or CI-artifact download present in the code, the artifact's cryptographic signature or digest is verified against a trusted public key or pinned hash before the artifact is executed, loaded, or written to a trusted path
-- [ ] For every signing or verification key or pinned hash referenced in the code, the material is read from an environment variable, secrets manager, OS keystore, or a build-time constant baked into the binary — function parameters whose origin the reader can't see do not satisfy this; show the load site
+- [ ] No code-executing deserializer (pickle, marshal, shelve, `ObjectInputStream.readObject`, `Marshal.load`, `unserialize`, `BinaryFormatter`, unsafe `yaml.load`) receives attacker-reachable bytes. Safe formats (JSON, `yaml.safe_load`, protobuf) may accept untrusted input if the next criterion is met.
+- [ ] Every deserialized object produced from untrusted input is validated against an explicit schema — field names, types, allowed values — before any field reaches business logic
+- [ ] For every software-update, plugin-load, or CI-artifact download, the artifact's signature or digest is verified before it is executed, loaded, or written to a trusted path
+- [ ] Verification keys and pinned hashes are read from an environment variable, secrets manager, OS keystore, or build-time constant — not hardcoded literals in source, and not opaque function parameters
 
 ## References
 

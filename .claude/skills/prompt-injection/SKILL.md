@@ -20,68 +20,47 @@ bypass guardrails, or execute unintended actions.
 - Concatenating retrieved RAG documents directly into the system prompt
 - Passing raw email or document content into a prompt with no boundary markers
 - No separation between developer instructions and untrusted data
+- Returning a raw model response to the caller or into a downstream action with no validation
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Trust tiers are structurally separate.** Developer instructions go in the
+   `system` role; user input and retrieved documents go in the `user` role wrapped
+   in explicit delimiter tags (`<context>…</context>`, `<question>…</question>`).
+   Never interpolate user text into the system prompt.
+2. **Input is bounded and screened before the API call.** Apply a length cap and
+   reject obvious injection markers (e.g. phrases like "ignore previous",
+   "new instruction"). Screening is a denylist and will not catch everything, but
+   it raises the bar.
+3. **Output is validated before any downstream action.** Every code path that uses
+   the model's response — returning it to the caller, rendering it, logging it,
+   triggering a tool call — first routes it through a gate that enforces size
+   bounds and rejects suspicious instruction language. A defined validator that
+   is never called does not satisfy this.
 
-```python
-import re
+Anchor — any language works the same way:
 
-DISALLOWED = re.compile(
-    r"(ignore previous|disregard|new instruction|system prompt|forget)", re.I
-)
-
-def sanitize_user_input(text: str, max_chars: int = 2000) -> str:
-    text = text[:max_chars].strip()
-    if DISALLOWED.search(text):
-        raise ValueError("Input contains disallowed instruction patterns.")
-    return text
-
-def build_messages(system_instructions: str, user_input: str, docs: list[str]) -> list[dict]:
-    safe_input = sanitize_user_input(user_input)
-    context_block = "\n---\n".join(docs)  # retrieved RAG content
-
-    return [
-        {"role": "system", "content": system_instructions},          # developer-controlled only
-        {"role": "user",   "content": (
-            f"<context>\n{context_block}\n</context>\n\n"            # data tier, clearly delimited
-            f"<question>\n{safe_input}\n</question>"                 # user tier, clearly delimited
-        )},
-    ]
-
-# Output validation gate — reject responses that echo injection markers
-def validate_llm_output(response: str) -> str:
-    if len(response) > 10_000:
-        raise ValueError("LLM response exceeds size budget.")
-    if DISALLOWED.search(response):
-        raise ValueError("LLM response contains suspicious instruction language.")
-    return response
-
-# Full call site — every code path that uses the LLM response runs it
-# through validate_llm_output BEFORE any downstream action (returning to
-# the caller, rendering, logging, triggering a tool call).
-def answer_question(system_instructions: str, user_input: str, docs: list[str]) -> str:
-    messages = build_messages(system_instructions, user_input, docs)
-    raw = call_llm(messages)
-    return validate_llm_output(raw)   # <- gate before any downstream use
 ```
+system:  developer_instructions            # no user text here
+user:    <context>{docs}</context>         # delimited, from the data tier
+         <question>{sanitized_input}</question>
 
-**Why this works:** Structural role separation prevents user text from overriding system
-instructions. XML delimiters make the data/instruction boundary legible to the model.
-The input and output validation gates catch known injection phrases and bounded-size
-violations before the response triggers any downstream action.
+raw   = call_llm(messages)
+safe  = validate_llm_output(raw)           # gate before ANY downstream use
+return safe
+```
 
 ## Verification
 
-Confirm the response:
+Confirm these properties hold:
 
 - [ ] User input never appears in the `system` role message
-- [ ] Retrieved documents are wrapped in explicit delimiter tags, not concatenated raw
+- [ ] Retrieved documents are wrapped in explicit delimiter tags, not concatenated raw into the prompt
 - [ ] Input length and pattern validation runs before the API call
-- [ ] LLM output is validated before it triggers any downstream action
+- [ ] The LLM response passes through a validation step at every call site before it is returned, rendered, logged, or used to trigger an action. A validator defined but never invoked does not count.
 
 ## References
 
