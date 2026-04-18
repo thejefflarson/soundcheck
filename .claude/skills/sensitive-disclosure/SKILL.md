@@ -22,45 +22,33 @@ prompts — to current users, future users, or via model extraction.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **PII is redacted or pseudonymized before it reaches the model.** Replace raw
+   records with opaque identifiers ("user_id=42" instead of the row), or scrub
+   values matching known sensitive patterns (SSN, email, card numbers) through a
+   redaction step. "Don't repeat personal details" in the prompt is not sufficient.
+2. **No credentials appear in prompt strings.** Load them from environment variables
+   or a secrets manager and keep them server-side — never interpolate into a system
+   prompt, even "just for auth context".
+3. **Every return site for the LLM response passes through an output-redaction gate**
+   before the response leaves the process. This catches data that leaked through
+   retrieval or memory.
+4. **If the code persists conversation history or writes to a memory/vector store,**
+   records are keyed or partitioned by user identity so one session's context
+   cannot be retrieved by another.
+5. **If prompts or completions are logged**, they go through the same redaction
+   helper before emission — otherwise logs become the leak.
 
-```python
-import re
+Anchor — shape, not implementation:
 
-# Scrub PII before sending — Python
-PII_PATTERNS = [
-    (r"\b\d{3}-\d{2}-\d{4}\b", "[SSN]"),          # SSN
-    (r"\b[\w.+-]+@[\w-]+\.\w{2,}\b", "[EMAIL]"),   # email
-    (r"\b4[0-9]{12}(?:[0-9]{3})?\b", "[CC]"),       # Visa card
-]
-
-def scrub_pii(text: str) -> str:
-    for pattern, label in PII_PATTERNS:
-        text = re.sub(pattern, label, text)
-    return text
-
-# Pass ID references, not raw records
-def build_prompt(user_id: int, question: str) -> str:
-    return (
-        f"Answer the following question for user_id={user_id}. "
-        f"Do not repeat personal details.\n\nQuestion: {scrub_pii(question)}"
-    )
-
-# Filter LLM output before returning to caller
-SENSITIVE_PATTERNS = re.compile(
-    r"\b(\d{3}-\d{2}-\d{4}|[\w.+-]+@[\w-]+\.\w{2,})\b"
-)
-
-def safe_llm_response(raw: str) -> str:
-    return SENSITIVE_PATTERNS.sub("[REDACTED]", raw)
 ```
-
-**Why this works:** References replace raw records so the model never sees full PII.
-Output scrubbing catches any data that leaked through context. No credentials should
-ever appear in prompt strings — load them from environment variables and keep them
-server-side only.
+safe_q  = redact(user_question)
+prompt  = f"Answer for user_id={user.id}: {safe_q}"     # reference, not record
+raw     = call_llm(system=DEV_INSTRUCTIONS, user=prompt)
+return redact(raw)                                       # every return site
+```
 
 ## Verification
 

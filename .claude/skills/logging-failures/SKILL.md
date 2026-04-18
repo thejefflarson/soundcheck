@@ -10,7 +10,9 @@ description: Use when writing logging code, audit trails, error handlers that lo
 
 ## What this checks
 
-Protects the ability to detect and respond to attacks. Missing security event logs leave breaches undetected; logging sensitive fields creates new data-exposure vulnerabilities; CRLF injection lets attackers forge log entries.
+Protects the ability to detect and respond to attacks. Missing security event logs
+leave breaches undetected; logging sensitive fields creates new data-exposure
+vulnerabilities; CRLF injection lets attackers forge log entries.
 
 ## Vulnerable patterns
 
@@ -22,63 +24,45 @@ Protects the ability to detect and respond to attacks. Missing security event lo
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every security-relevant decision point emits exactly one log record.**
+   Authentication outcomes, authorization outcomes, privileged actions — no branch
+   silently exits. A successful login and a failed login should both produce a
+   record; a missing failure log is as bad as no logging at all.
+2. **Credential-like fields never appear as values.** Names like `password`, `token`,
+   `secret`, `authorization`, `api_key`, `session`, `credit_card`, `ssn` are either
+   omitted or redacted before the log call. Do this at the logger, not at every
+   call site — a forgotten call site is a guaranteed leak.
+3. **Every user-controlled string passes through a CRLF/newline stripping step
+   before reaching the log sink** — including fields that "look safe" like
+   usernames. A username with `\n[CRITICAL] admin logged in` forges log lines.
+4. **Records are structured key/value data (JSON, structured fields) — not an
+   interpolated message string.** A SIEM has to regex-parse a message string, and
+   regex-parsers miss things attackers can exploit.
+5. **Each record carries an event-type identifier and an actor identifier.** The
+   actor is a non-null field naming who or what triggered the event — a user id,
+   session id, `"anonymous"`, or `"system"` for server-initiated jobs. Never silently
+   omitted.
 
-```python
-import logging
-import json
-import re
-from typing import Any
+Anchor — shape, not implementation:
 
-class StructuredLogger:
-    def __init__(self, name: str):
-        self._log = logging.getLogger(name)
-
-    _SCRUB = frozenset({"password", "passwd", "token", "secret",
-                        "authorization", "api_key", "credit_card", "ssn"})
-
-    @staticmethod
-    def _sanitize_crlf(value: str) -> str:
-        return re.sub(r"[\r\n]", " ", str(value))
-
-    def _scrub(self, data: dict[str, Any]) -> dict[str, Any]:
-        return {
-            k: "[REDACTED]" if k.lower() in self._SCRUB
-               else self._sanitize_crlf(str(v))
-            for k, v in data.items()
-        }
-
-    def security_event(self, event: str, **fields: Any) -> None:
-        record = {"event": event, **self._scrub(fields)}
-        self._log.info(json.dumps(record))
-
-log = StructuredLogger(__name__)
-
-def login(username: str, password: str) -> dict:
-    user = db.get_user(username)
-    if not user or not verify_password(password, user.password_hash):
-        log.security_event("auth.failure", username=username)   # no password
-        return {"error": "Invalid credentials"}, 401
-    log.security_event("auth.success", user_id=user.id)
-    return {"token": create_session(user)}, 200
-
-def deny_access(user_id: str, resource: str) -> None:
-    log.security_event("authz.denied", user_id=user_id, resource=resource)
 ```
-
-**Why this works:** Structured JSON is parseable by SIEM tools; scrubbing blocks credential leakage; CRLF sanitization prevents log injection; every auth decision (success and failure) produces a durable audit record.
+log.security_event("auth.failure", actor=username)        # CRLF-stripped, no password
+log.security_event("auth.success", actor=user.id)
+log.security_event("authz.denied", actor=user.id, resource=id)
+```
 
 ## Verification
 
-Confirm the following *properties* hold (language-agnostic):
+Confirm these properties hold (language-agnostic):
 
 - [ ] Every security-relevant decision point in the rewritten code (authentication outcome, authorization outcome, privileged action) emits exactly one log record — no branch silently exits without logging
 - [ ] Credential-like field names (password, passwd, token, secret, authorization, api_key, session) never appear as values in any log record — they are either omitted or replaced with a redaction marker before the log call
 - [ ] Every user-controlled string value reaching a log sink passes through a CRLF/newline stripping step — no field is interpolated raw, including ones that "look safe" like usernames
 - [ ] Log records are emitted as structured key/value data (JSON object, structured logger fields, or equivalent) — not as a single interpolated message string that a SIEM would have to regex-parse
-- [ ] Each record carries an event-type identifier and an **actor** identifier — a non-null field naming who or what triggered the event (user id, session id, explicit `"anonymous"`, or `"system"` for server-initiated jobs). The actor field is never silently omitted from any security event.
+- [ ] Each record carries an event-type identifier and an actor identifier — a non-null field naming who or what triggered the event (user id, session id, `"anonymous"`, or `"system"` for server-initiated jobs). The actor field is never silently omitted from any security event.
 
 ## References
 
