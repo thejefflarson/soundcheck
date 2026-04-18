@@ -23,51 +23,39 @@ exfiltration.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every tool input is constrained at the tool boundary.** JSON Schema keywords
+   (`maxLength`, `pattern`, `enum`, `additionalProperties: false`), a typed enum
+   or sealed class, runtime validation at the top of the handler, or an allowlist
+   lookup — the goal is that a malformed value never reaches the handler body.
+2. **Authorization runs inside the handler against the invoking principal** — not
+   outsourced to the LLM's judgment, not inferred from the caller, not handled
+   only by an outer framework layer. The LLM is an attacker in the threat model;
+   it cannot be trusted to gate its own actions.
+3. **File and path identifiers are canonicalized and verified against an explicit
+   root.** Resolve the path, then check that the resolved target falls inside the
+   allowed directory. Path traversal (`../`), symlink escape, and absolute-path
+   injection all fail this check.
+4. **Tools expose the narrowest capability that satisfies their purpose.** Read,
+   write, and delete live in separate handlers, not multiplexed behind an
+   `action` parameter. Narrow tools are easier to audit and harder to weaponize.
+5. **Every invocation produces an audit record** containing the principal, the
+   tool name, and sanitized parameters — written before the side-effecting
+   operation returns.
 
-```python
-import logging
-from pathlib import Path
+Anchor — shape, not implementation:
 
-ALLOWED_DIR = Path("/app/data").resolve()
-logger = logging.getLogger(__name__)
-
-# Tool schema — tight constraints declared upfront
-READ_FILE_SCHEMA = {
-    "name": "read_file",
-    "description": "Read a file from the allowed data directory.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "filename": {
-                "type": "string",
-                "maxLength": 128,
-                "pattern": r"^[\w\-]+\.(txt|csv|json)$",  # allowlist extensions
-            }
-        },
-        "required": ["filename"],
-        "additionalProperties": False,
-    },
-}
-
-# Tool handler — validate, authorize, log
-def read_file(filename: str, *, current_user) -> str:
-    if not current_user.has_permission("file:read"):
-        raise PermissionError("Unauthorized")
-
-    target = (ALLOWED_DIR / filename).resolve()
-    if not str(target).startswith(str(ALLOWED_DIR)):
-        raise ValueError("Path traversal detected")
-
-    logger.info("tool=read_file user=%s file=%s", current_user.id, filename)
-    return target.read_text()
 ```
-
-**Why this works:** Schema constraints reject malformed inputs before the handler
-runs. The resolved-path check defeats traversal. Authorization is enforced inside
-the handler — never delegated to the LLM's judgment. Every invocation is logged.
+schema: { filename: { type: string, maxLength: 128, pattern: "^[\\w-]+\\.(txt|csv)$" } }
+def read_file(filename, *, caller):
+    require(caller.has_permission("file:read"))
+    target = (ALLOWED_ROOT / filename).resolve()
+    require(target.is_relative_to(ALLOWED_ROOT))
+    audit_log("read_file", caller.id, filename)
+    return target.read()
+```
 
 ## Verification
 

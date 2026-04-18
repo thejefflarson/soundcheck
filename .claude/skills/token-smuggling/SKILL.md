@@ -21,30 +21,37 @@ bypass keyword filters, or make malicious instructions appear legitimate.
 
 ## Fix immediately
 
-Normalize and strip control characters before including user input in any prompt or
-security-sensitive comparison:
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-```python
-import unicodedata, re
+1. **User input is NFKC-normalized before it reaches any prompt or blocklist
+   comparison.** NFKC collapses compatibility forms and canonical equivalents,
+   so Cyrillic homoglyphs, fullwidth digits, and ligatures fold to their ASCII
+   counterparts. Normalization runs once, at the trust boundary — not scattered
+   per call site.
+2. **Unicode control and invisible formatting characters are stripped after
+   normalization.** Bidirectional overrides (`\u202a`–`\u202e`), zero-width
+   space/joiner (`\u200b`–`\u200d`), word joiner (`\u2060`), and BOM (`\ufeff`)
+   don't survive into the prompt. These are the tokens attackers use to hide
+   instructions or split keywords.
+3. **Security-sensitive comparisons (blocklists, keyword filters, domain
+   allowlists) run on normalized input**, not on the raw bytes. A filter that
+   checks for `"paypal.com"` but the comparison runs on pre-normalized text
+   lets `раypal.com` pass.
+4. **The same helper runs on every ingress path** — direct user input,
+   retrieved RAG content, tool outputs. Attackers move the payload wherever the
+   sanitizer doesn't run.
 
-def sanitize_for_prompt(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text)  # resolve homoglyphs
-    text = re.sub(                               # strip control/formatting chars
-        r"[\u0000-\u0008\u000b\u000c\u000e-\u001f"
-        r"\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]",
-        "", text,
-    )
+Anchor — shape, not implementation:
+
+```
+def sanitize(text):
+    text = unicode_normalize(text, "NFKC")              # fold homoglyphs
+    text = strip(text, BIDI_AND_INVISIBLE_RANGES)        # drop zero-width, RTL
     return text
-```
 
-```javascript
-function sanitizeForPrompt(text) {
-    return text.normalize('NFKC')
-        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, '');
-}
+safe = sanitize(user_input)                              # before prompt / filter
 ```
-
-Flag the vulnerable call site, explain the risk and the correct fix pattern, then continue with the original task.
 
 ## Verification
 

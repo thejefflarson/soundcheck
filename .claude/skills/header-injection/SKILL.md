@@ -24,40 +24,32 @@ session fixation, XSS via injected headers, and response splitting.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every header value derived from user input is stripped of CR/LF before it
+   reaches the header-set call.** A single `\r\n` in a value ends the header block
+   and starts a new header (or a new response body). The strip happens at or
+   before the call site — relying on the framework to reject it is fragile
+   across versions.
+2. **Forwarded headers are sanitized too.** Values read from incoming requests
+   (correlation IDs, user agents, custom headers) are attacker-controlled just
+   like form inputs. Echoing them into outgoing responses or logs without
+   stripping is the same vulnerability.
+3. **Content-Disposition filenames are normalized** — CRLF stripped, quotes
+   escaped, and for international characters use RFC 5987 `filename*=UTF-8''…`
+   rather than raw UTF-8 in the header value.
+4. **Redirect Location headers are validated too.** A CRLF in the target URL
+   splits the response; see the `open-redirect` skill for target-host validation.
 
-```python
-# Python — strip CRLF from any value used in headers
-import re
+Anchor — shape, not implementation:
 
-def safe_header_value(value: str) -> str:
-    return re.sub(r"[\r\n]", "", value)
-
-response.headers["X-Custom"] = safe_header_value(user_input)
 ```
-
-```go
-// Go — net/http rejects \r\n in header values since Go 1.21
-// For older versions or extra safety:
-func safeHeaderValue(v string) string {
-    return strings.NewReplacer("\r", "", "\n", "").Replace(v)
-}
-w.Header().Set("X-Custom", safeHeaderValue(userInput))
+def safe_header(v): return v.replace("\r", "").replace("\n", "")
+response.set_header("X-Custom",      safe_header(user_input))
+response.set_header("Location",      safe_header(validated_url))
+response.set_header("Content-Disposition", f'attachment; filename="{safe_header(name)}"')
 ```
-
-```javascript
-// Node.js — Express rejects headers with \r\n since v4
-// For explicit safety:
-const safeValue = userInput.replace(/[\r\n]/g, "");
-res.set("X-Custom", safeValue);
-```
-
-**Why this works:** Stripping carriage return and newline characters from header values
-eliminates the injection vector. Modern frameworks increasingly reject these by default,
-but explicit sanitization prevents regressions and covers edge cases.
 
 ## Verification
 

@@ -22,44 +22,34 @@ the full schema to attackers), and batch/alias attacks that bypass rate limiting
 
 ## Fix immediately
 
-Flag the vulnerable configuration and explain the risk. Show the secure pattern below
-as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Query depth is capped at a small fixed value** (typically 5–10) via a
+   validation rule or middleware that runs before resolver execution. Unbounded
+   depth lets a single query trigger exponential resolver work.
+2. **Total query cost is bounded.** Either a cost-analysis plugin that assigns
+   weights to fields and rejects over-budget queries, or alias/field-count limits
+   — the goal is that a single request cannot do unbounded work regardless of
+   depth. Alias batching (`a1: … a1000: …`) bypasses per-request rate limits
+   unless this is enforced.
+3. **Introspection is disabled in production.** Leaving it on exposes the full
+   schema — including deprecated fields, admin types, and hints for targeted
+   attacks — to anyone who can hit the endpoint. Gate it on an environment flag.
+4. **Every credential-accepting mutation (login, passwordReset, mfaVerify) has
+   a rate limit that survives alias batching** — apply per operation, not per
+   HTTP request, so `a1: login … a1000: login` counts as 1000 attempts.
 
-```javascript
-// Node.js / Apollo Server
-import depthLimit from 'graphql-depth-limit';
-import costAnalysis from 'graphql-cost-analysis';
+Anchor — shape, not implementation:
 
-const server = new ApolloServer({
-  schema,
-  introspection: process.env.NODE_ENV !== "production",
-  plugins: [
-    { requestDidStart: () => ({ didResolveOperation: costAnalysis({ maximumCost: 1000 }) }) },
-  ],
-  validationRules: [depthLimit(5)],
-});
 ```
-
-```python
-# Python / Strawberry
-import strawberry
-from strawberry.extensions import QueryDepthLimiter
-
-schema = strawberry.Schema(
-    query=Query,
-    extensions=[QueryDepthLimiter(max_depth=5)],
+server = new GraphQLServer(
+    schema,
+    introspection = env != "production",
+    validation = [depthLimit(5), costAnalysis(max=1000)],
+    rate_limit = per_operation("login", 5/min),
 )
-# Disable introspection in production
-if not DEBUG:
-    schema = strawberry.Schema(query=Query, extensions=[...],
-                                types=[], enable_introspection=False)
 ```
-
-**Why this works:** Depth limiting prevents exponential nested queries. Cost analysis
-caps total resolver work per request. Disabling introspection in production prevents
-schema reconnaissance.
 
 ## Verification
 

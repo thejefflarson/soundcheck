@@ -23,42 +23,33 @@ codes.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every redirect target is either a relative path or a member of an exact
+   host allowlist.** Parse the URL, inspect the host, and reject anything outside
+   the allowlist. Prefix matching (`startswith`) is not sufficient —
+   `allowed.com.evil.com` passes a prefix check.
+2. **Scheme-relative URLs are blocked explicitly.** A value starting with `//`
+   parses as a protocol-relative URL and redirects to whatever host follows.
+   Checking for `http://` / `https://` alone misses this.
+3. **OAuth and login "return-to" parameters go through the same validator** as
+   any other redirect target. These are the highest-value targets because they
+   run in an authenticated context; a redirect here hands the attacker the
+   post-login session or an authorization code.
+4. **On validation failure, redirect to a safe default** (`/`, home, dashboard)
+   rather than echoing an error containing the malicious URL. Echoing it back
+   gives attackers a reflected-XSS surface.
 
-```python
-# Python/Flask — validate redirect is relative or in allowlist
-from urllib.parse import urlparse
+Anchor — shape, not implementation:
 
-ALLOWED_HOSTS = {"myapp.com", "www.myapp.com"}
-
-def safe_redirect(url: str) -> str:
-    parsed = urlparse(url)
-    # Allow only relative paths or known hosts
-    if parsed.netloc and parsed.netloc not in ALLOWED_HOSTS:
-        return "/"
-    # Block scheme-relative URLs like //evil.com
-    if url.startswith("//"):
-        return "/"
-    return url
 ```
-
-```go
-// Go — reject absolute URLs and foreign hosts
-func safeRedirect(target string) string {
-    u, err := url.Parse(target)
-    if err != nil || u.IsAbs() || strings.HasPrefix(target, "//") {
-        return "/"
-    }
+def safe_redirect(target):
+    if target.startswith("//"): return "/"       # block scheme-relative
+    u = parse(target)
+    if u.host and u.host not in ALLOWED_HOSTS: return "/"
     return target
-}
 ```
-
-**Why this works:** Restricting redirects to relative paths or an explicit host
-allowlist prevents attackers from directing users to external sites. Blocking
-`//` prevents scheme-relative bypasses.
 
 ## Verification
 

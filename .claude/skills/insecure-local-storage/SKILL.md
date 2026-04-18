@@ -23,37 +23,35 @@ tokens without authentication.
 
 ## Fix immediately
 
-Replace unprotected storage with platform-secure equivalents:
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-```python
-# Python: OS keychain via keyring
-import keyring
-keyring.set_password("myapp", "api_key", secret)
-secret = keyring.get_password("myapp", "api_key")
+1. **Sensitive values go to platform-managed secure storage, not a plain file or
+   pref store.** OS keychain (Python `keyring`, iOS Keychain, macOS Keychain),
+   Android `EncryptedSharedPreferences`, Windows DPAPI / Credential Manager.
+   These encrypt at rest and scope access to the owning process.
+2. **Web clients do not store long-lived credentials in `localStorage` or
+   `sessionStorage`.** These are readable by any script on the origin — one XSS
+   and the token is gone. Use a Secure, HttpOnly, SameSite cookie for session
+   tokens, or a short-lived in-memory token refreshed from the server.
+3. **If secure storage is unavailable, data is encrypted with a key that also
+   lives in secure storage** — not hardcoded, not in the same file, not derived
+   from device-static values. Symmetric encryption with a keychain-held key is
+   the baseline.
+4. **Temp files for sensitive data are avoided**, or created with restrictive
+   permissions (`0600`), written to a user-only directory, and deleted in a
+   `finally` block — never left in `/tmp` with default perms.
+
+Anchor — shape, not implementation:
+
 ```
+# sensitive value → platform secure store
+keychain.set("api_key", value)
 
-```kotlin
-// Android: EncryptedSharedPreferences
-val masterKey = MasterKey.Builder(context)
-    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-val prefs = EncryptedSharedPreferences.create(
-    context, "secure_prefs", masterKey,
-    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM)
+# or, if you must use a file
+key = keychain.get("file_enc_key") or keychain.generate_and_store("file_enc_key")
+write(path, aead_encrypt(key, value), mode=0o600)
 ```
-
-```swift
-// iOS: Keychain
-let query: [String: Any] = [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrAccount as String: "api_key",
-    kSecValueData as String: secretData]
-SecItemAdd(query as CFDictionary, nil)
-```
-
-**Why this works:** Platform-managed secure storage encrypts at rest and enforces
-process-level access control, preventing other apps and backup restores from reading
-secrets.
 
 ## Verification
 

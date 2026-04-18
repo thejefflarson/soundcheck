@@ -23,49 +23,34 @@ of the deployment.
 
 ## Fix immediately
 
-Rewrite using the pattern below.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-```python
-from fastapi import FastAPI, Depends, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-import time, logging
+1. **Every inference endpoint requires authentication** — API key, bearer token,
+   or mTLS. Unauthenticated endpoints are free training data for anyone who
+   wants to clone the model.
+2. **Rate limits are keyed on the authenticated principal, not the IP.** IP-only
+   throttles are defeated by rotating proxies and residential IP pools; a
+   per-user/per-key quota follows the attacker even as IPs churn.
+3. **Extraction-signal fields are stripped from responses.** `logprobs`, full
+   embedding vectors, and per-token probabilities are the primary signals
+   distillation attacks use to reconstruct a model. If a caller doesn't strictly
+   need them, don't return them.
+4. **Query patterns are monitored for extraction signatures** — high-volume,
+   low-entropy, systematic grid-search probes. Alerts fire on anomalies; the
+   handler records user identity, timestamp, and prompt for after-the-fact
+   investigation.
 
-logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=lambda req: req.state.user_id)  # per-user, not per-IP
+Anchor — shape, not implementation:
 
-app = FastAPI()
-
-def require_api_key(request: Request) -> str:
-    key = request.headers.get("X-API-Key")
-    user_id = validate_api_key(key)     # lookup in DB; raise 401 if invalid
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    request.state.user_id = user_id
-    return user_id
-
-@app.post("/infer")
-@limiter.limit("60/minute")             # per-user quota; tune to your SLA
-async def infer(request: Request, payload: InferRequest,
-                user_id: str = Depends(require_api_key)):
-    result = model.generate(payload.prompt)
-
-    logger.info("infer user=%s tokens=%d", user_id, result.token_count)
-    detect_extraction_pattern(user_id, payload.prompt)  # alert on grid-search probes
-
-    # Strip logprobs, raw embeddings, and weight data — these are the primary
-    # signals used for model distillation attacks.
-    return {"text": result.text}
-
-def detect_extraction_pattern(user_id: str, prompt: str) -> None:
-    # Flag users with high query volume + low prompt diversity (extraction signal)
-    record_query(user_id, prompt)
-    if query_entropy(user_id) < ENTROPY_THRESHOLD:
-        alert_security_team(user_id)
 ```
-
-Per-user rate limiting survives IP rotation; omitting logprobs removes the main
-distillation signal; entropy monitoring catches systematic probing.
+require(valid_api_key(request))                    # authenticated
+require(rate_limit.allow(request.user_id))         # per-user, not per-IP
+result = model.generate(prompt)
+log_query(user_id, prompt, result.tokens)
+detect_extraction_pattern(user_id, prompt)         # entropy-based alert
+return { text: result.text }                       # no logprobs, no embeddings
+```
 
 ## Verification
 

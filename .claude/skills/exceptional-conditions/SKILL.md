@@ -21,45 +21,33 @@ Protects against information disclosure and fail-open logic. Stack traces in API
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Client responses carry no internal detail.** No stack trace, no file path, no
+   library version, no raw exception message. The client gets a generic message
+   and an opaque reference ID; the full traceback goes to a server-side log keyed
+   by that same ID.
+2. **No catch block exits silently.** Every `except` / `catch` / `recover` takes a
+   definite action: re-raise, log, or return a controlled error. A bare `except:
+   pass` or `catch (_) {}` is the exact bug this skill prevents.
+3. **Authorization failures fail closed.** A `PermissionError`, `AccessDenied`,
+   or equivalent exception in a catch block must produce a deny response — never
+   a fall-through or default-allow. The safest pathway on ambiguity is refusal.
+4. **Debug / verbose-error flags are off at deployment.** Framework switches like
+   Flask `app.debug=False`, Spring `server.error.include-stacktrace=never`, Gin
+   `ReleaseMode` are set explicitly, not left at their development default.
 
-```python
-import logging
-import uuid
-import traceback
-from functools import wraps
-from flask import jsonify
+Anchor — shape, not implementation:
 
-log = logging.getLogger(__name__)
-
-# --- Generic user-facing error; details logged server-side only ---
-def _error_response(status: int, ref_id: str) -> tuple:
-    return jsonify({"error": "An unexpected error occurred", "ref": ref_id}), status
-
-def safe_handler(fn):
-    """Decorator: fail-closed with opaque client errors and full server-side logging."""
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        ref = uuid.uuid4().hex
-        try:
-            return fn(*args, **kwargs)
-        except PermissionError:
-            # Fail-closed: deny access, never allow on exception
-            log.warning("authz.error ref=%s", ref, exc_info=True)
-            return _error_response(403, ref)
-        except ValueError as exc:
-            log.info("validation.error ref=%s msg=%s", ref, exc)
-            return jsonify({"error": "Invalid input", "ref": ref}), 400
-        except Exception:
-            # Catch-all: log full traceback server-side, return nothing internal
-            log.error("unhandled.exception ref=%s\n%s", ref, traceback.format_exc())
-            return _error_response(500, ref)
-    return wrapper
 ```
-
-**Why this works:** Users receive only an opaque reference ID; the full traceback is logged server-side for debugging; `PermissionError` explicitly denies rather than allowing; the catch-all never silently swallows failures.
+ref = new_uuid()
+try: return handler(request)
+except AuthzError:      log(ref, exc); return error_response(403, ref)
+except ValidationError: log(ref, exc); return error_response(400, ref)
+except Exception:       log(ref, full_traceback()); return error_response(500, ref)
+# client sees: { "error": "...", "ref": ref } — no internal detail
+```
 
 ## Verification
 

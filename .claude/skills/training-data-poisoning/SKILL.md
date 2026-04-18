@@ -23,63 +23,37 @@ model behavior in ways that are difficult to detect after training completes.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every external dataset file is checksum-verified before use.** A pinned
+   SHA-256 in version control; the loader computes the digest on load and
+   refuses to proceed on mismatch. Pinning a URL or version alone doesn't help
+   when the bytes behind them change.
+2. **Every example passes content validation** before entering the training
+   set: type and length checks, disallowed-pattern filtering (injection tokens
+   like `ignore previous`, `<|im_start|>`, jailbreak signatures), and
+   encoding/Unicode sanity. Invalid examples are dropped, not silently used.
+3. **Duplicates are removed before training.** Poisoning attacks often batch
+   the same backdoor trigger across many examples; deduplication by content
+   hash limits the leverage of a single injected payload.
+4. **Label distribution is checked and alerts fire on imbalance** above a
+   threshold. A sudden 80%-one-class shift is a statistical signature of
+   bulk-inserted poison; it's cheap to catch at ingestion and impossible to
+   reverse after training.
+5. **Train and validation splits come from disjoint sources or time windows.**
+   Reusing the same split for both hides distribution shift and lets poisoned
+   examples score well on validation.
 
-```python
-import hashlib, json, re
-from pathlib import Path
-from collections import Counter
+Anchor — shape, not implementation:
 
-KNOWN_DATASET_HASHES: dict[str, str] = {
-    "training_v3.jsonl": "sha256:a3f1c8...",
-}
-
-def verify_dataset_integrity(path: Path) -> None:
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    expected = KNOWN_DATASET_HASHES.get(path.name, "").removeprefix("sha256:")
-    if not expected or digest != expected:
-        raise ValueError(f"Checksum mismatch for {path.name}: got {digest}")
-
-MAX_CHARS = 4096
-DISALLOWED = re.compile(r"(ignore previous|jailbreak|<\|.*?\|>)", re.I)
-
-def validate_example(example: dict) -> bool:
-    text = example.get("text", "")
-    if not isinstance(text, str) or not text.strip():
-        return False
-    if len(text) > MAX_CHARS:
-        return False
-    if DISALLOWED.search(text):
-        return False
-    return True
-
-def load_dataset(path: Path, val_fraction: float = 0.1) -> tuple[list, list]:
-    verify_dataset_integrity(path)
-    raw = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-
-    seen: set[str] = set()
-    unique = []
-    for ex in raw:
-        h = hashlib.md5(ex.get("text", "").encode()).hexdigest()
-        if h not in seen and validate_example(ex):
-            seen.add(h)
-            unique.append(ex)
-
-    labels = Counter(ex.get("label") for ex in unique)
-    total = len(unique)
-    for label, count in labels.items():
-        if count / total > 0.8:
-            raise ValueError(f"Label '{label}' is {count/total:.0%} of dataset — possible poisoning")
-
-    split = int(len(unique) * (1 - val_fraction))
-    return unique[:split], unique[split:]
 ```
-
-**Why this works:** Checksum verification blocks tampered dataset files. Per-example
-validation rejects injected tokens and oversized entries. Label-distribution checks
-surface statistical anomalies that indicate batch poisoning.
+require(sha256(dataset_file) == PINNED_SHA256)
+rows    = [r for r in parse(dataset_file) if validate(r)]        # per-example
+unique  = dedupe_by_hash(rows)
+require(max_class_fraction(unique) < 0.8)                         # anomaly gate
+train, val = split_by_source(unique, val_fraction=0.1)
+```
 
 ## Verification
 

@@ -23,35 +23,34 @@ they would sanitize raw user input.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Treat LLM output as untrusted input at every consumption point.** The same
+   escaping, parameterization, and allowlisting rules that apply to user input
+   apply here — prompt injection makes the model a proxy for attacker content.
+2. **HTML rendering uses a safe sink.** `textContent` / auto-escaping template
+   for plain text; a sanitizer (DOMPurify, bleach) for rich content. Never
+   `innerHTML`, `dangerouslySetInnerHTML`, or `v-html` with a raw LLM string.
+3. **Shell and code execution require an allowlist.** If the LLM picks an
+   action, the handler validates it against a static set of permitted commands
+   and invokes them with argv arrays — never `shell=True`, never `eval`, never
+   `os.system(raw_output)`.
+4. **Database queries are parameterized.** LLM output lands in bind variables,
+   not string-interpolated into the statement. For injection details, see the
+   `injection` skill.
 
-```python
-import html
-import subprocess
-import shlex
-from typing import Literal
+Anchor — shape, not implementation:
 
-def render_llm_text(response: str) -> str:
-    return html.escape(response)  # never assign directly to innerHTML
-
-# JavaScript: use textContent (safe) or DOMPurify.sanitize() (when HTML needed)
-# NEVER: element.innerHTML = llmResponse
-
-ALLOWED_COMMANDS: set[str] = {"ls", "cat", "echo"}
-
-def run_llm_suggested_command(llm_output: str) -> str:
-    parts = shlex.split(llm_output)
-    if not parts or parts[0] not in ALLOWED_COMMANDS:
-        raise ValueError(f"Command not permitted: {parts[0] if parts else '(empty)'}")
-    result = subprocess.run(parts, capture_output=True, text=True, timeout=10)
-    return result.stdout
 ```
-
-**Why this works:** `textContent` and `html.escape` stop XSS without blocking legitimate
-text. The command allowlist ensures the model can only trigger pre-approved operations.
-Parameterized queries eliminate SQL injection regardless of what the LLM produces.
+# HTML
+element.textContent = llm_out                       # or sanitize(llm_out) for rich
+# shell
+require(parse(llm_out)[0] in ALLOWED_COMMANDS)
+run(parse(llm_out), shell=False, timeout=10)
+# SQL
+db.execute("SELECT ... WHERE name = ?", [llm_out])  # parameterized
+```
 
 ## Verification
 

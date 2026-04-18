@@ -22,40 +22,32 @@ directly enable credential stuffing, account takeover, and data breach.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Passwords go through a slow, salted, memory-hard hash** — bcrypt, scrypt, or
+   argon2. Never MD5, SHA1, or SHA256-alone: they're fast enough to brute-force
+   billions of candidates per second on consumer GPUs. The salt is per-password
+   and stored alongside the hash, not a global constant.
+2. **Security-sensitive randomness comes from a CSPRNG** — `secrets` in Python,
+   `crypto.randomBytes` in Node, `crypto/rand` in Go, `SecureRandom` in Java.
+   Never `random`, `Math.random`, or time-seeded PRNGs for tokens, session IDs,
+   nonces, or keys.
+3. **Symmetric encryption uses an authenticated mode** — AES-GCM, AES-CCM,
+   ChaCha20-Poly1305. ECB never; CBC only with a separate MAC (encrypt-then-MAC).
+   A fresh nonce per message, never reused with the same key.
+4. **Keys live outside the source tree** — environment variable, secrets manager,
+   KMS, or OS keystore. Never hardcoded literals, never committed config files.
+   Rotation requires touching infrastructure, not source.
 
-```python
-# Password hashing — use bcrypt or argon2
-import bcrypt
-hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
-# Verify:
-bcrypt.checkpw(password.encode(), hashed)
+Anchor — shape, not implementation:
 
-# Secure random token — Python
-import secrets
-token = secrets.token_urlsafe(32)   # 256 bits of CSPRNG output
-
-# Secure random token — Node.js
-const crypto = require("crypto");
-const token = crypto.randomBytes(32).toString("hex");
-
-# Symmetric encryption — AES-256-GCM (authenticated)
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-key = AESGCM.generate_key(bit_length=256)   # store in secrets manager, not source
-aesgcm = AESGCM(key)
-nonce = secrets.token_bytes(12)             # unique per message
-ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data)
-
-# Key from environment
-import os
-SECRET_KEY = os.environ["SECRET_KEY"]   # never hardcode
 ```
-
-**Why this works:** bcrypt/argon2 are slow by design and include a salt, defeating
-rainbow tables. `secrets` / `crypto.randomBytes` use the OS CSPRNG. AES-GCM
-provides both confidentiality and integrity; ECB provides neither.
+hashed  = password_hash(password, algo=bcrypt_or_argon2)   # slow + salted
+token   = csprng_bytes(32)                                  # not Math.random
+key     = load_from_env_or_kms("ENCRYPTION_KEY")
+ct      = aead_encrypt(key, nonce=csprng_bytes(12), pt, aad)
+```
 
 ## Verification
 

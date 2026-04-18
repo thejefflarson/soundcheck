@@ -16,53 +16,51 @@ compromise.
 
 ## Vulnerable patterns
 
-- `file.save(os.path.join('uploads/', file.filename))` -- user-controlled filename stored directly, enabling path traversal and extension bypass
-- `Path(uploadDir).resolve().toString() + originalFilename` -- original filename preserved, no extension allowlist
-- `io.Copy(dst, file)` with destination in webroot -- uploaded content served directly by the web server
-- No `Content-Length` or stream-size check -- attacker uploads multi-GB file to exhaust disk
+- `file.save(os.path.join('uploads/', file.filename))` — user-controlled filename stored directly, enabling path traversal and extension bypass
+- `Path(uploadDir).resolve().toString() + originalFilename` — original filename preserved, no extension allowlist
+- `io.Copy(dst, file)` with destination in webroot — uploaded content served directly by the web server
+- No `Content-Length` or stream-size check — attacker uploads multi-GB file to exhaust disk
 
 ## Fix immediately
 
-For each vulnerable upload handler, apply all of the following controls:
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-1. **Extension allowlist** -- reject any file whose extension is not in an explicit allowlist (e.g., `.png`, `.jpg`, `.pdf`). Never use a denylist.
-2. **Rename the file** -- replace the user-supplied filename with a random identifier (UUID/CSPRNG hex). Preserve only the validated extension.
-3. **Store outside webroot** -- write uploads to a directory the web server does not serve directly. Serve files through an application route that sets `Content-Disposition: attachment` and a safe `Content-Type`.
-4. **Enforce size limit** -- cap upload size at the framework level (e.g., Flask `MAX_CONTENT_LENGTH`, Spring `max-file-size`, nginx `client_max_body_size`).
-5. **Validate MIME type** -- check the file's magic bytes, not just the `Content-Type` header.
+1. **Extension is validated against an allowlist, never a denylist.** Denylists
+   miss novel extensions (`.phtml`, `.phar`, `.svg`) and case variations. An
+   allowlist of expected types (`.png`, `.jpg`, `.pdf`) fails closed.
+2. **The user-supplied filename is never used as the storage path.** Rename the
+   file to a CSPRNG identifier, preserving only the validated extension. This
+   defeats path traversal (`../../etc/passwd`), overwrites of existing files, and
+   filename-based XSS on download.
+3. **Uploads are written outside the webroot.** The server must not serve them
+   directly — files are handed out through an application route that sets a safe
+   `Content-Type` and `Content-Disposition: attachment`, never inferred from the
+   filename.
+4. **Size is capped at the framework or proxy level**, not just inside the handler.
+   A handler-only check lets a multi-gigabyte upload exhaust memory before the
+   check runs.
+5. **MIME type is validated against the file's magic bytes**, not the
+   `Content-Type` header the client sent — the header is attacker-controlled.
 
-**Python (Flask) secure pattern:**
+Anchor — shape, not implementation:
 
-```python
-import uuid, os
-from werkzeug.utils import secure_filename
-
-ALLOWED_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.pdf'}
-UPLOAD_DIR = '/var/data/uploads'  # outside webroot
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB
-
-@app.route('/upload', methods=['POST'])
-def upload():
-    f = request.files['file']
-    ext = os.path.splitext(f.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        abort(400, 'File type not allowed')
-    safe_name = f"{uuid.uuid4().hex}{ext}"
-    f.save(os.path.join(UPLOAD_DIR, safe_name))
-    return jsonify(id=safe_name), 201
 ```
-
-**Why this works:** The allowlist blocks executable extensions, the random name prevents path traversal and overwrites, storing outside webroot prevents direct execution, and the size cap prevents resource exhaustion.
+require(ext(upload.filename) in ALLOWED_EXT)
+require(magic_bytes_match(upload.stream, ALLOWED_MIMES))
+name = csprng_hex() + ext(upload.filename)
+save(upload.stream, UPLOAD_DIR_OUTSIDE_WEBROOT / name)   # size cap set in framework
+```
 
 ## Verification
 
 Confirm the following properties hold (language-agnostic):
 
-- [ ] Only explicitly-allowed file extensions are accepted -- enforced via an allowlist, not a denylist
-- [ ] The user-supplied filename is never used as the storage path -- files are renamed to a random or hashed identifier
+- [ ] Only explicitly-allowed file extensions are accepted — enforced via an allowlist, not a denylist
+- [ ] The user-supplied filename is never used as the storage path — files are renamed to a random or hashed identifier
 - [ ] Uploaded files are stored outside the web-accessible document root
 - [ ] A maximum upload size is enforced at the framework or reverse-proxy level
-- [ ] Files are served with `Content-Disposition: attachment` and a safe, explicit `Content-Type` -- never inferred from the filename
+- [ ] Files are served with `Content-Disposition: attachment` and a safe, explicit `Content-Type` — never inferred from the filename
 
 ## References
 

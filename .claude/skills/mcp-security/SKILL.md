@@ -22,45 +22,39 @@ direct access to the host environment.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Tool schemas constrain every string parameter** — `maxLength`, `pattern`,
+   `enum`, or `additionalProperties: false`. A bare `"type": "string"` is a blank
+   check. The schema is the first line of defense because the model generated the
+   input.
+2. **Paths are canonicalized and confined to an allowed root.** The handler
+   resolves the supplied filename against a fixed base directory and verifies the
+   result stays inside that directory — defeating `../`, symlink escape, and
+   absolute paths.
+3. **Shell execution uses argument lists, never `shell=True` with string input.**
+   If the tool must run a command, the command name comes from a static
+   allowlist and arguments go through argv, not string interpolation.
+4. **Secrets come from the environment or a secrets manager** — never hardcoded
+   literals in the handler or tool definition. A leaked MCP server config
+   shouldn't leak credentials.
+5. **Every invocation is audit-logged** with the tool name and sanitized inputs
+   before the side-effect runs. For broader MCP tool design guidance, see the
+   `insecure-plugin-design` skill.
 
-```python
-import os, logging
-from pathlib import Path
+Anchor — shape, not implementation:
 
-ALLOWED_DIR = Path("/app/data").resolve()
-API_KEY = os.environ["SERVICE_API_KEY"]  # never hardcode
-logger = logging.getLogger(__name__)
-
-TOOL_SCHEMA = {
-    "name": "read_file",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "filename": {
-                "type": "string",
-                "maxLength": 128,
-                "pattern": r"^[\w\-]+\.(txt|json|csv)$",
-            }
-        },
-        "required": ["filename"],
-        "additionalProperties": False,
-    },
-}
-
-def handle_read_file(inputs: dict) -> str:
-    target = (ALLOWED_DIR / inputs["filename"]).resolve()
-    if not str(target).startswith(str(ALLOWED_DIR)):
-        raise ValueError("Path traversal blocked")
-    logger.info("mcp=read_file file=%s", inputs["filename"])
-    return target.read_text()
 ```
+schema: { filename: { type: string, maxLength: 128, pattern: "^[\\w-]+\\.(txt|csv)$" } }
+API_KEY = load_from_env("SERVICE_API_KEY")
 
-**Why this works:** Schema constraints reject malformed inputs before the handler runs.
-Path confinement to `ALLOWED_DIR` defeats traversal. Secrets load from environment.
-Every invocation is logged.
+def read_file(inputs):
+    target = (ALLOWED_ROOT / inputs["filename"]).resolve()
+    require(target.is_relative_to(ALLOWED_ROOT))
+    audit_log("read_file", inputs["filename"])
+    return target.read()
+```
 
 ## Verification
 

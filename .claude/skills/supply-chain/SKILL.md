@@ -24,47 +24,40 @@ runtime.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every direct dependency is pinned to an exact version.** No `*`, no
+   `latest`, no caret/tilde ranges, no open comparators, no unpinned git
+   branches or tags. A floating range silently pulls in the next compromised
+   release; an exact pin means a human decides when to move.
+2. **A lockfile is committed** that records resolved transitive versions with
+   content hashes — `package-lock.json`, `pnpm-lock.yaml`, `poetry.lock`,
+   `Cargo.lock`, `go.sum`, or the Maven lock plugin output. CI installs with
+   a frozen-lockfile command (`npm ci`, `pnpm install --frozen-lockfile`,
+   `cargo build --locked`, `go mod verify`) that fails on drift, not a
+   silent-resolve command.
+3. **A vulnerability scanner runs in CI and fails the build on high-severity
+   findings.** Any tool that exits non-zero works — `npm audit`, `pip-audit`,
+   `cargo audit`, `trivy`, OWASP Dependency-Check. A scanner that reports but
+   doesn't fail the build is advisory, not a gate.
+4. **No install hook, build script, or CI step pipes remote content into a
+   shell.** `curl | bash`, `wget | sh`, `iwr | iex` — every instance replaces
+   the whole supply chain with whatever the server decides to serve today.
+5. **AI-suggested or unrecognized package names are verified in the registry
+   before install** — slopsquatted typosquats are a real and growing vector
+   in AI-generated manifests. `npm view <pkg>` / `pip index versions <pkg>`
+   catches them.
 
-```jsonc
-// package.json — exact pins, no ranges
-{
-  "dependencies": {
-    "express": "4.18.2",
-    "axios": "1.6.8"
-  }
-}
+Anchor — shape, not implementation:
+
 ```
-
-```toml
-# pyproject.toml — exact pins
-[tool.poetry.dependencies]
-python = "^3.11"
-requests = "2.31.0"
-cryptography = "42.0.5"
+# manifest: "express": "4.18.2"       # exact, not ^4.18.0
+# CI:
+npm ci                                # fails if lockfile missing / drifted
+npm audit --audit-level=high          # non-zero exit gates the build
+# forbidden: curl https://… | bash
 ```
-
-```yaml
-# CI pipeline (GitHub Actions) — audit + lockfile enforcement
-- name: Install dependencies
-  run: npm ci               # ci enforces lockfile; fails if package-lock.json is absent
-
-- name: Audit dependencies
-  run: npm audit --audit-level=high
-
-- name: Python audit
-  run: |
-    pip install pip-audit
-    pip-audit --requirement requirements.txt
-```
-
-- **Slopsquatting**: verify every AI-suggested package name exists in the registry before installing — `npm view <pkg>` / `pip index versions <pkg>`
-
-**Why this works:** Exact version pins combined with a committed lockfile guarantee
-the same bytes are installed on every machine. `npm ci` and `pip-audit` in CI catch
-known CVEs and prevent lockfile drift before code reaches production.
 
 ## Verification
 

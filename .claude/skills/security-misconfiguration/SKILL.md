@@ -22,36 +22,33 @@ information disclosure via error pages or debug endpoints.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **CORS with `allow_credentials=true` uses an explicit origin allowlist** —
+   never `*`, never a reflected `Origin` header. The wildcard-plus-credentials
+   combination hands every site on the web cookie-authenticated access to your
+   API; browsers block it in spec, but misconfigured middleware still ships it.
+2. **Debug and verbose-error flags default to off in production.** `debug=True`,
+   `DEBUG`, `RUST_LOG=trace`, and equivalent switches come from environment or
+   config — never hardcoded `True`. Production-only guards (`assert not
+   app.debug`) make a misconfigured deploy fail loudly.
+3. **Every HTTP server registers a security-headers layer** (helmet, Django
+   `SecurityMiddleware`, `tower-http` `SetResponseHeaderLayer`, Spring
+   `HttpSecurity.headers()`) before routes. Baseline: `Strict-Transport-Security`,
+   `X-Content-Type-Options: nosniff`, and a framing or CSP control. An upstream
+   proxy may own these instead — but only if that ownership is documented.
+4. **Host / origin validation uses an explicit allowlist**, not `*` or empty
+   defaults. Django `ALLOWED_HOSTS`, trusted-origin lists, and CSRF-trusted
+   origins are all attacker-reachable when unset.
 
-```python
-# Strict CORS — Python (FastAPI / Starlette)
-ALLOWED_ORIGINS = os.environ["CORS_ALLOWED_ORIGINS"].split(",")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,   # never "*" when allow_credentials=True
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
-)
+Anchor — shape, not implementation:
 
-# Production guard — Flask
-assert os.environ.get("FLASK_ENV") != "production" or not app.debug, \
-    "debug=True must not be set in production"
-
-# Security headers middleware — Express.js (use helmet)
-const helmet = require("helmet");
-app.use(helmet());  # sets CSP, HSTS, X-Frame-Options, X-Content-Type-Options, etc.
-
-# Secrets from environment, never hardcoded
-DB_PASSWORD = os.environ["DB_PASSWORD"]   # set in .env (gitignored) or secret manager
 ```
-
-**Why this works:** Explicit origin allowlists prevent cross-site credential theft.
-Helmet/security headers eliminate entire classes of browser-side attacks with a single
-middleware call. Env-var secrets are never committed to version control.
+app.use(cors({ origins: ALLOWED_ORIGINS, credentials: true }))   # not "*"
+app.use(security_headers_middleware())                             # HSTS + nosniff + frame
+assert env("NODE_ENV") != "production" or not DEBUG                # fail loudly
+```
 
 ## Verification
 

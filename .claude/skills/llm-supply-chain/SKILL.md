@@ -23,57 +23,31 @@ backdoors that survive retraining.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Model revisions are pinned to an exact commit SHA**, never `main`, `latest`,
+   or a mutable branch name. A floating tag lets the registry (or a registry
+   compromise) silently swap what you load on the next pull — including backdoored
+   weights that look identical by name.
+2. **Weight files are checksum-verified after download.** A SHA-256 of the
+   expected bytes is pinned in version control; the loader computes the digest
+   on the downloaded file and refuses to use it on mismatch. Pinning the
+   revision alone doesn't help if the artifact is served from a compromised CDN.
+3. **Model source is validated against an allowlist of approved organizations**
+   before download begins. `org/model` notation with a wildcard org field is
+   the supply-chain equivalent of `*`.
+4. **Automated model updates have a human approval gate.** A CI job that bumps a
+   pinned revision without review is a backdoor delivery channel; rotate
+   revisions through PRs with signed artifacts reviewed by a human.
 
-```python
-import hashlib
-from pathlib import Path
-import requests
-from transformers import AutoModelForCausalLM, AutoTokenizer
+Anchor — shape, not implementation:
 
-# Pin exact commit SHA — never use "main" or "latest"
-PINNED_MODEL_ID  = "meta-llama/Llama-3.2-1B"
-PINNED_REVISION  = "a7c4f09e"          # exact commit SHA
-EXPECTED_SHA256  = "b3d9f1..."          # pinned in version control
-
-ALLOWED_ORGS = {"meta-llama", "mistralai", "google", "openai"}
-
-def verify_model_file(path: Path, expected_hex: str) -> None:
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    if digest != expected_hex:
-        raise ValueError(f"Model checksum mismatch: expected {expected_hex}, got {digest}")
-
-def validate_model_source(model_id: str) -> None:
-    org = model_id.split("/")[0]
-    if org not in ALLOWED_ORGS:
-        raise ValueError(f"Model org '{org}' is not in the approved allowlist.")
-
-def load_verified_model(cache_dir: Path):
-    validate_model_source(PINNED_MODEL_ID)
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        PINNED_MODEL_ID,
-        revision=PINNED_REVISION,       # pinned commit; not "main"
-        cache_dir=cache_dir,
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        PINNED_MODEL_ID,
-        revision=PINNED_REVISION,
-        cache_dir=cache_dir,
-    )
-
-    # Verify the cached weight file after download
-    weight_file = next(cache_dir.glob("*.safetensors"))
-    verify_model_file(weight_file, EXPECTED_SHA256)
-
-    return tokenizer, model
 ```
-
-**Why this works:** Pinning the revision to a commit SHA guarantees the same artifact
-on every pull. The org allowlist blocks models from unvetted sources. Post-download
-checksum verification catches tampering that occurs in transit or in the registry cache.
+require(model_id.split("/")[0] in APPROVED_ORGS)
+model = load(model_id, revision=PINNED_COMMIT_SHA)   # not "main"
+require(sha256(weight_file) == PINNED_SHA256)         # pinned in source
+```
 
 ## Verification
 

@@ -25,39 +25,32 @@ the secret remains in git history.
 
 ## Fix immediately
 
-Flag the hardcoded secret and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the hardcoded secret and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Secrets are loaded from outside the source tree.** Environment variable,
+   secrets manager (AWS Secrets Manager, HashiCorp Vault, 1Password), KMS, or OS
+   keystore. No string literal that resembles a real credential appears in source
+   — not in code, not in config files, not in test fixtures.
+2. **Missing secrets fail loudly at load time, not silently at first use.** A
+   `getenv("API_KEY")` with no fallback, a required-field check, or an early
+   fatal log guarantees a misconfigured deploy crashes immediately rather than
+   running with an empty string that mysteriously fails later.
+3. **Test fixtures use obviously fake values** — `test_key_DO_NOT_USE`,
+   `sk_test_FAKE`, `changeme` — that cannot be mistaken for production
+   credentials and will never unlock a real service if leaked.
+4. **Rotation does not require a code change.** If rotating the credential means
+   editing source and redeploying, the secret is effectively hardcoded even if
+   it's technically loaded through a constant. Rotation happens by updating the
+   external store and restarting.
 
-```python
-# Python — read from environment
-import os
-API_KEY = os.environ["API_KEY"]  # fails fast if not set
-DB_URL = os.environ["DATABASE_URL"]
+Anchor — shape, not implementation:
 
-# For optional secrets with safe defaults
-DEBUG_KEY = os.environ.get("DEBUG_KEY", "")  # empty, not a real key
 ```
-
-```go
-// Go — environment variables
-apiKey := os.Getenv("API_KEY")
-if apiKey == "" {
-    log.Fatal("API_KEY not set")
-}
+API_KEY = require_env("API_KEY")       # fail fast if missing
+DB_URL  = secrets_manager.get("db/primary")
+# no string literal matching /sk_live_|ghp_|AKIA[0-9A-Z]{16}|-----BEGIN/ in source
 ```
-
-```javascript
-// Node.js — environment or secrets manager
-const apiKey = process.env.API_KEY;
-if (!apiKey) throw new Error("API_KEY required");
-```
-
-**Why this works:** Environment variables keep secrets out of source code and version
-control. They can be set differently per environment (dev/staging/prod) and rotated
-without code changes. For production systems, use a secrets manager (AWS Secrets
-Manager, HashiCorp Vault, 1Password) instead of raw env vars.
 
 ## Verification
 

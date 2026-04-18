@@ -23,37 +23,40 @@ inject data through shared channels.
 
 ## Fix immediately
 
-```swift
-// iOS: allowlist valid URL scheme hosts
-func application(_ app: UIApplication, open url: URL,
-    options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-    let allowed = ["action", "share"]
-    guard let host = url.host, allowed.contains(host) else { return false }
-    // handle url
-    return true
-}
-```
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-```xml
-<!-- Android: restrict exported components to same-signature callers -->
-<permission android:name="com.example.INVOKE"
-    android:protectionLevel="signature" />
-<activity android:exported="true"
-    android:permission="com.example.INVOKE" />
-```
+1. **URL scheme handlers validate scheme, host, and path against a static allowlist**
+   before running any action. A custom scheme is invokable by any app on the device;
+   only the handler decides what's legitimate.
+2. **Exported Android components require a signature-level permission** or verify the
+   caller package explicitly. `android:exported="true"` without `android:permission`
+   makes the component callable by anything on the phone. Intent extras are
+   validated against a schema before use.
+3. **Network listeners bind to the narrowest interface that works.** Unix domain
+   sockets or `127.0.0.1`/`::1`, never `0.0.0.0`, when the listener is for
+   same-host IPC. An auth token or peer-cred check runs before the handler acts
+   on any command.
+4. **Named pipes and XPC services verify caller identity** via
+   `effectiveUserIdentifier`, code-signing requirement, or pipe ACL before any
+   privileged action. Electron/renderer IPC handlers check
+   `event.senderFrame.url` against an origin allowlist with context isolation on.
+5. **No IPC-supplied value reaches `exec` / `eval` / `Runtime.exec` unvalidated.**
+   The channel is an attacker-reachable surface; treat its payloads like network
+   input.
 
-```javascript
-// Node: bind to Unix socket, require auth token
-const server = net.createServer(conn => {
-    const token = conn.read(32);
-    if (!crypto.timingSafeEqual(token, EXPECTED)) { conn.destroy(); return; }
-    handle(conn);
-});
-server.listen('/var/run/myapp.sock'); // not 0.0.0.0
-```
+Anchor — shape, not implementation:
 
-**Why this works:** Allowlisting callers and requiring authentication closes the channel
-to untrusted processes before any privileged action is taken.
+```
+# URL scheme
+require(url.scheme in ALLOWED_SCHEMES and url.host in ALLOWED_HOSTS)
+
+# exported Android component  →  android:permission="com.example.INVOKE" (signature-level)
+
+# socket listener
+server = listen_unix("/var/run/app.sock")   # not 0.0.0.0
+require(peer_cred_ok(conn) or valid_token(conn.read(32)))
+```
 
 ## Verification
 

@@ -24,54 +24,34 @@ configuration, or achieving remote code execution via file write.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **The intended root is resolved to a canonical absolute path once**, up
+   front. Everything that follows compares against the resolved root — not
+   against a relative string that can match itself after traversal.
+2. **The caller-supplied path is joined with the root, then resolved to a
+   canonical absolute path that also follows symlinks.** `realpath`,
+   `Path.resolve()`, `toRealPath()`, `filepath.EvalSymlinks` — the call that
+   collapses `../` and follows links. Only after this does the containment
+   check make sense.
+3. **The resolved target must start with the resolved root** (or
+   `is_relative_to`, `startsWith` equivalent). A mismatch means traversal or
+   symlink escape; reject rather than fall through. `os.path.join` and
+   `filepath.Join` alone do not satisfy this — they collapse some `..` but
+   don't verify containment.
+4. **The check runs before every file operation** — read, write, delete, stat.
+   A canonicalization that happens once at handler entry but isn't re-applied
+   to a later `open()` call is a bug.
 
-```python
-# Python — resolve and verify containment
-from pathlib import Path
+Anchor — shape, not implementation:
 
-UPLOAD_DIR = Path("/app/uploads").resolve()
-
-def safe_read(filename: str) -> bytes:
-    target = (UPLOAD_DIR / filename).resolve()
-    if not target.is_relative_to(UPLOAD_DIR):
-        raise ValueError("Path traversal blocked")
-    return target.read_bytes()
 ```
-
-```go
-// Go — Clean + verify prefix
-func safeRead(root, userPath string) ([]byte, error) {
-    absRoot, _ := filepath.Abs(root)
-    target := filepath.Join(absRoot, filepath.Clean("/"+userPath))
-    if !strings.HasPrefix(target, absRoot+string(os.PathSeparator)) {
-        return nil, fmt.Errorf("path traversal blocked")
-    }
-    // Also reject symlinks that escape
-    real, err := filepath.EvalSymlinks(target)
-    if err != nil { return nil, err }
-    if !strings.HasPrefix(real, absRoot+string(os.PathSeparator)) {
-        return nil, fmt.Errorf("symlink escape blocked")
-    }
-    return os.ReadFile(real)
-}
+root   = canonical(ROOT_DIR)
+target = canonical(root / user_filename)           # resolves .., follows symlinks
+require(target.starts_with(root))                  # containment
+open(target)
 ```
-
-```java
-// Java — toRealPath resolves symlinks and normalizes
-Path root = Paths.get("/app/uploads").toRealPath();
-Path target = root.resolve(userInput).toRealPath();
-if (!target.startsWith(root)) {
-    throw new SecurityException("Path traversal blocked");
-}
-```
-
-**Why this works:** Resolving to an absolute canonical path collapses all `..` segments
-and follows symlinks. The containment check then verifies the result is still under the
-intended root. This blocks `../`, absolute paths, and symlink escapes.
 
 ## Verification
 

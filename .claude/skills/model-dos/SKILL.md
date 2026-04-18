@@ -22,50 +22,34 @@ inference costs, saturate GPU/CPU, and deny service to legitimate users.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every LLM call sets an explicit output cap** — `max_tokens`, `max_output_tokens`,
+   or the provider equivalent. Leaving it at the provider default lets a single
+   request run for minutes and rack up dollars in tokens.
+2. **Prompt input is length-capped at the handler boundary** before it reaches the
+   inference client. Measured in chars, bytes, or tokens — the exact unit doesn't
+   matter as long as the cap runs before the upstream call.
+3. **Conversation context is bounded.** Either the handler is stateless
+   single-turn, or accumulated history is trimmed to a fixed turn or token
+   budget before every call. Unbounded history is an attacker's favorite amplifier.
+4. **Per-identifier throttling** (per user, per API key, per IP) runs on every
+   LLM endpoint. In-process token bucket, framework middleware, or reverse-proxy
+   rule — anything that survives alias/batch tricks and prevents one caller from
+   pinning the endpoint.
+5. **Every inference call has a deadline.** SDK timeout, HTTP client timeout,
+   request-context cancellation — a hung upstream must not be able to indefinitely
+   occupy a worker.
 
-```python
-import time
-from collections import defaultdict
-from openai import OpenAI
+Anchor — shape, not implementation:
 
-client = OpenAI()
-
-MAX_INPUT_CHARS   = 8_000
-MAX_CONTEXT_TURNS = 10
-MAX_OUTPUT_TOKENS = 512
-
-_buckets: dict = defaultdict(lambda: (time.monotonic(), 10.0))
-
-def check_rate_limit(user_id: str) -> None:
-    last, tokens = _buckets[user_id]
-    now = time.monotonic()
-    tokens = min(10.0, tokens + (now - last) * 0.5)
-    if tokens < 1.0:
-        raise PermissionError("Rate limit exceeded.")
-    _buckets[user_id] = (now, tokens - 1.0)
-
-def call_llm(user_id: str, user_text: str, history: list[dict]) -> str:
-    check_rate_limit(user_id)
-    if len(user_text) > MAX_INPUT_CHARS:
-        raise ValueError(f"Input exceeds {MAX_INPUT_CHARS} chars")
-    system = [m for m in history if m["role"] == "system"]
-    trimmed = system + [m for m in history if m["role"] != "system"][-(MAX_CONTEXT_TURNS * 2):]
-    trimmed.append({"role": "user", "content": user_text.strip()})
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=trimmed,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        timeout=30,
-    )
-    return response.choices[0].message.content
 ```
-
-**Why this works:** Input length validation stops oversized payloads before they reach
-the API. `max_tokens` and `timeout` bound both cost and wall-clock time per request.
-The token bucket rate limiter prevents a single user from monopolizing the endpoint.
+require(len(user_text) <= MAX_CHARS)
+require(rate_limiter.allow(user_id))
+history = trim(history, MAX_TURNS)
+resp = llm.call(history + [user_text], max_tokens=512, timeout=30)
+```
 
 ## Verification
 

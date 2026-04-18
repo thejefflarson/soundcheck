@@ -24,39 +24,31 @@ leads to authentication bypass, data exfiltration, and denial of service.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Every value destined for a query filter is type-checked as a primitive.**
+   Reject anything that isn't a string, number, or boolean before it reaches the
+   query builder. The classic `{pass: {$ne: ""}}` auth bypass works because the
+   deserialized JSON was allowed to be an object; type-coercing it to a string
+   turns `$ne` into a literal that can't match.
+2. **`$where`, `$expr`, and `$function` never receive user-supplied values.**
+   These operators accept JavaScript or expression strings that the database
+   engine evaluates; with user input in them, the database is an interpreter
+   running attacker code.
+3. **Raw request bodies and query objects are not passed directly as filters.**
+   Build the query object explicitly from validated, named fields — the same
+   allowlist discipline that defeats mass assignment (see the `mass-assignment`
+   skill for ORM-side details).
 
-```javascript
-// Node.js / Mongoose — cast to string, reject operators
-app.post("/login", async (req, res) => {
-  const { user, pass } = req.body;
-  // Ensure values are strings — blocks {$ne: ""} operator injection
-  if (typeof user !== "string" || typeof pass !== "string") {
-    return res.status(400).json({ error: "Invalid input" });
-  }
-  const account = await User.findOne({ user, pass: await hash(pass) });
-  // ...
-});
+Anchor — shape, not implementation:
+
 ```
-
-```python
-# Python / PyMongo — validate types, never use $where
-from pymongo import MongoClient
-
-def find_user(username: str) -> dict | None:
-    # Enforce string type — blocks operator injection
-    if not isinstance(username, str):
-        raise ValueError("username must be a string")
-    return db.users.find_one({"username": username})
-    # Never: db.users.find({"$where": f"this.name == '{username}'"})
+require(isinstance(username, str))                 # reject objects / arrays
+user = db.users.find_one({"username": username})   # primitive, not operator
+# never: db.users.find({"$where": f"this.name == '{user_input}'"})
+# never: collection.find(req.body)                 # operators smuggle in
 ```
-
-**Why this works:** Type-checking user input to ensure it's a string (not an object
-with `$` operators) prevents operator injection. Avoiding `$where` and `$expr` with
-user input prevents JavaScript execution in the database engine.
 
 ## Verification
 

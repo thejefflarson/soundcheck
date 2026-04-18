@@ -23,52 +23,35 @@ a single compromised or hallucinated step can cause unrecoverable damage.
 
 ## Fix immediately
 
-When this skill invokes, flag the vulnerable code and explain the risk. Show the secure pattern below as a suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Actions are classified by impact, and the classifier gates dispatch.** Low-impact
+   (reversible, narrow scope) may proceed; high-impact (irreversible, broad scope,
+   external side effects) blocks on human approval. A classifier that's defined but
+   never branched on is the bug this skill prevents.
+2. **Tool boundaries enforce an explicit allowlist of actions and resources** —
+   path prefixes, API endpoints, table names. The LLM does not choose what's
+   allowed; the tool handler does, and rejects anything outside the list before
+   dispatch.
+3. **Every executed action is audit-logged before dispatch**, with enough context
+   to reconstruct what happened: the action name, its parameters, the prompt that
+   produced it, and the operator who approved it (if any). After-the-fact logging
+   is insufficient — if dispatch crashes, the log is gone.
+4. **Irreversible actions cannot be invoked transitively through LLM-generated
+   parameters.** A tool named `run_sql` that accepts arbitrary queries violates
+   this; a tool named `archive_record(id)` that only issues a scoped update does not.
 
-```python
-from enum import Enum
-from dataclasses import dataclass
-from typing import Any
+Anchor — shape, not implementation:
 
-class Impact(Enum):
-    LOW = "low"        # reversible, narrow scope
-    HIGH = "high"      # irreversible or broad scope
-
-@dataclass
-class AgentAction:
-    name: str
-    params: dict[str, Any]
-    impact: Impact
-
-# Dry-run by default; HIGH-impact actions require explicit human approval
-def execute_action(action: AgentAction, *, dry_run: bool = True) -> str:
-    if dry_run:
-        return f"[DRY-RUN] would execute {action.name}({action.params})"
-
-    if action.impact == Impact.HIGH:
-        approved = request_human_approval(action)   # blocks until approved/denied
-        if not approved:
-            return "Action denied by operator."
-
-    audit_log(action)   # always log before execution
-    return dispatch(action)
-
-# Agent loop — plan first, confirm before act
-def run_agent(task: str) -> None:
-    plan = llm_plan(task)           # LLM returns list[AgentAction]
-    print("Proposed actions:", plan)
-
-    # Show full plan and confirm once for LOW-impact batch; gate each HIGH-impact step
-    for action in plan:
-        result = execute_action(action, dry_run=False)
-        print(result)
 ```
-
-**Why this works:** Dry-run mode surfaces the full action plan before anything executes.
-High-impact actions block on human approval. Every executed action is audit-logged
-before dispatch, giving operators a kill-switch and full traceability.
+action = plan_from_llm(task)
+require(action.name in TOOL_ALLOWLIST)
+if impact(action) == HIGH:
+    require(human_approves(action))        # blocks until approved
+audit_log(action)                          # before dispatch, not after
+dispatch(action)
+```
 
 ## Verification
 

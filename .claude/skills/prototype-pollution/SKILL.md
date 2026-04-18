@@ -23,39 +23,37 @@ bypass, and remote code execution in some frameworks.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure pattern:**
+1. **Any recursive merge, clone, or property copy on user input filters the
+   dangerous keys** — `__proto__`, `constructor`, `prototype`. The filter runs
+   before assignment, not after; a post-hoc `delete obj.__proto__` doesn't help
+   because the prototype chain was already mutated.
+2. **Dynamic property assignment (`obj[userKey] = value`) validates the key
+   against a blocklist**, or sidesteps the issue by using a `Map` instead. A
+   `Map` has no prototype chain exposure; `obj[userKey]` does.
+3. **Config and lookup objects use `Object.create(null)` when keys come from
+   input.** A null-prototype object cannot be polluted because there is no
+   prototype chain to reach.
+4. **Lodash `_.merge`, `_.set`, and jQuery `$.extend(true, …)` on untrusted
+   input are replaced** with key-filtered wrappers or safe alternatives. The
+   issue is library-version-dependent, so relying on patched versions is
+   fragile; filter at the call site.
 
-```javascript
-// Block dangerous keys in any merge/set operation
-const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+Anchor — shape, not implementation:
 
-function safeMerge(target, source) {
-  for (const key of Object.keys(source)) { // Object.keys skips inherited
-    if (DANGEROUS_KEYS.has(key)) continue;
-    if (typeof source[key] === "object" && source[key] !== null
-        && typeof target[key] === "object") {
-      safeMerge(target[key], source[key]);
-    } else {
-      target[key] = source[key];
-    }
-  }
-  return target;
-}
-
-// Or: use Object.create(null) for config objects (no prototype)
-const config = Object.create(null);
-
-// Or: use Map instead of plain objects for dynamic keys
-const settings = new Map();
-settings.set(userKey, userValue); // Map has no prototype chain risk
 ```
-
-**Why this works:** Filtering `__proto__`, `constructor`, and `prototype` keys prevents
-attackers from reaching the prototype chain. `Object.create(null)` creates objects with
-no prototype, making pollution impossible. `Map` avoids the problem entirely.
+const BAD = new Set(["__proto__", "constructor", "prototype"]);
+function safeMerge(t, s) {
+  for (const k of Object.keys(s)) {          // not `for ... in`
+    if (BAD.has(k)) continue;
+    t[k] = (isObj(s[k]) && isObj(t[k])) ? safeMerge(t[k], s[k]) : s[k];
+  }
+  return t;
+}
+// or: const config = Object.create(null);   // no prototype to pollute
+```
 
 ## Verification
 

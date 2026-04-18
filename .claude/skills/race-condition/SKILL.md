@@ -23,47 +23,37 @@ double-spend, and data corruption.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-**Secure patterns:**
+1. **No check-then-act sequence on shared state runs without atomicity.** The
+   check and the act collapse into a single atomic operation, or both sit
+   inside a lock, transaction, or database-level guard. A `SELECT` followed by
+   a separate `UPDATE` is the exact bug — merge them into a conditional
+   `UPDATE ... WHERE` that returns the affected row count.
+2. **Balance, counter, and quota updates use atomic increments or
+   compare-and-swap** — never a read, modify, write sequence in application
+   code. Under concurrency the read-modify-write loses every interleaved
+   update; the database or atomic type is the correct place for the mutation.
+3. **File operations that depend on existence use atomic APIs** — `rename`,
+   `link`, `O_CREAT|O_EXCL`, `os.makedirs(exist_ok=False)`. `os.path.exists()`
+   followed by `os.open()` is TOCTOU-exploitable; the atomic flag short-circuits
+   the window.
+4. **Uniqueness constraints live in the database, not in application code.**
+   `if !exists() { create() }` races two ways with itself; a `UNIQUE` index
+   plus an insert-and-catch-duplicate pattern is race-free by construction.
 
-```python
-# Python — atomic file operation (no check-then-act)
-import os
-try:
-    os.remove(path)  # atomic — no TOCTOU window
-except FileNotFoundError:
-    pass  # already gone
+Anchor — shape, not implementation:
 
-# Database — use atomic operations or row-level locking
-# Bad: SELECT then UPDATE
-# Good: single atomic UPDATE with WHERE guard
-cursor.execute(
-    "UPDATE accounts SET balance = balance - %s WHERE id = %s AND balance >= %s",
-    (amount, user_id, amount),
-)
-if cursor.rowcount == 0:
-    raise InsufficientFunds()
 ```
+# atomic DB update with guard
+rows = db.execute("UPDATE accounts SET balance = balance - ? "
+                  "WHERE id = ? AND balance >= ?", [amount, id, amount])
+require(rows == 1)                     # rowcount is the "check"
 
-```go
-// Go — use sync.Mutex for in-process shared state
-var mu sync.Mutex
-func debit(account *Account, amount int) error {
-    mu.Lock()
-    defer mu.Unlock()
-    if account.Balance < amount {
-        return ErrInsufficient
-    }
-    account.Balance -= amount
-    return nil
-}
+# atomic file create
+fd = open(path, O_CREAT | O_EXCL)      # fails if it already exists
 ```
-
-**Why this works:** Atomic operations eliminate the window between check and act.
-Database-level guards (WHERE clauses, row locks, serializable transactions) enforce
-atomicity even under concurrent requests.
 
 ## Verification
 
