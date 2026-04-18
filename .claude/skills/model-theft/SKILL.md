@@ -57,7 +57,7 @@ return { text: result.text }                       # no logprobs, no embeddings
 - [ ] Every inference endpoint requires a valid API key or bearer token
 - [ ] Rate limits are enforced per authenticated user, not per IP address
 - [ ] `logprobs`, raw embeddings, and weight data are excluded from API responses
-- [ ] Query logs include user identity, timestamp, and prompt for anomaly detection
+- [ ] Query logs include user identity, timestamp, and either the prompt itself or a stable fingerprint (hash, embedding, or normalized form) sufficient to detect content-pattern anomalies. Logging only metadata (length, token count, request id) without any reconstructable prompt signal does not satisfy this. Choice between raw prompt and fingerprint is a privacy tradeoff — document the decision.
 
 ## References
 

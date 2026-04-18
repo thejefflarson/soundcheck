@@ -37,7 +37,10 @@ these properties:
    call site — a forgotten call site is a guaranteed leak.
 3. **Every user-controlled string passes through a CRLF/newline stripping step
    before reaching the log sink** — including fields that "look safe" like
-   usernames. A username with `\n[CRITICAL] admin logged in` forges log lines.
+   usernames, and including any dedicated `actor`/`subject`/`user_id` parameter
+   (not just fields passed through `**kwargs`). A username with
+   `\n[CRITICAL] admin logged in` forges log lines whether it arrives as a
+   positional argument or a kwarg.
 4. **Records are structured key/value data (JSON, structured fields) — not an
    interpolated message string.** A SIEM has to regex-parse a message string, and
    regex-parsers miss things attackers can exploit.
@@ -60,7 +63,7 @@ Confirm these properties hold (language-agnostic):
 
 - [ ] Every security-relevant decision point in the rewritten code (authentication outcome, authorization outcome, privileged action) emits exactly one log record — no branch silently exits without logging
 - [ ] Credential-like field names (password, passwd, token, secret, authorization, api_key, session) never appear as values in any log record — they are either omitted or replaced with a redaction marker before the log call
-- [ ] Every user-controlled string value reaching a log sink passes through a CRLF/newline stripping step — no field is interpolated raw, including ones that "look safe" like usernames
+- [ ] Every user-controlled string value reaching a log sink passes through a CRLF/newline stripping step — no field is interpolated raw, including ones that "look safe" like usernames and including dedicated `actor`/`subject`/`user_id` parameters (not only fields in `**kwargs`)
 - [ ] Log records are emitted as structured key/value data (JSON object, structured logger fields, or equivalent) — not as a single interpolated message string that a SIEM would have to regex-parse
 - [ ] Each record carries an event-type identifier and an actor identifier — a non-null field naming who or what triggered the event (user id, session id, `"anonymous"`, or `"system"` for server-initiated jobs). The actor field is never silently omitted from any security event.
 
