@@ -102,12 +102,6 @@ Key metrics:
 - **Hotspot coverage**: what fraction of the hotspot map was addressed?
 - **Early exit**: did the review touch ≥3 directories?
 
-### Auto-invocation tests
-
-`scripts/test-auto-invocation.py` — sends coding tasks (not review tasks) to
-Claude via `--plugin-dir` and checks whether the output demonstrates
-security-aware behavior (parameterized queries, bcrypt, etc.).
-
 ### Self-review CI gate
 
 `.github/workflows/self-review.yml` — runs Soundcheck against itself on every
@@ -124,9 +118,8 @@ docs/test-cases/           89 test fixtures (multi-language)
 scripts/
   _claude_cli.py           Shared wrapper for claude -p
   security-review-action.py  PR gate + full scan + --autofix
-  smoke-test-skills.py     Detection quality tests (LLM-as-judge)
+  smoke-test-skills.py     Paired plugin-vs-bare detection quality (LLM-as-judge)
   benchmark-eval.py        Repo-level evaluation (4 repos × 3 skills)
-  test-auto-invocation.py  Auto-invocation A/B tests
   validate-skills.py       Static checks (word count, sections, CWE refs)
 .github/workflows/
   self-review.yml          Soundcheck-on-Soundcheck CI gate

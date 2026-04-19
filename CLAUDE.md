@@ -115,7 +115,8 @@ To verify a skill works:
 - Threat radar: `docs/threat-radar.md`
 - Threat nomination template: `.github/ISSUE_TEMPLATE/threat-nomination.md`
 - Static validator: `scripts/validate-skills.py`
-- Smoke test: `scripts/smoke-test-skills.py`
+- Paired smoke test: `scripts/smoke-test-skills.py` (plugin vs bare arms, Wilcoxon signed-rank on per-criterion count)
+- Smoke methodology: `docs/smoke-test-methodology.md`
 - SecurityEval benchmark: `scripts/benchmark-securityeval.py`
 - Security review action script: `scripts/security-review-action.py`
 - Security review GitHub Action: https://github.com/thejefflarson/soundcheck-action
