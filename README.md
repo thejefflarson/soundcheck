@@ -200,6 +200,27 @@ threats across four status tiers: `watching`, `candidate`, `in-progress`, and `s
 
 ---
 
+## Measured effect
+
+A paired smoke test (`scripts/smoke-test-skills.py`) reviews 130 intentionally
+vulnerable fixtures twice — once with Soundcheck's skill content loaded as
+system context, once with a neutral security-reviewer system prompt — then
+scores both reviews against the skill's own verification criteria.
+
+Haiku run, 126 rows after excluding judge-parse failures:
+
+| | Plugin | Bare |
+|---|---|---|
+| Full-pass rate (every criterion satisfied) | **77%** (98/126) | 40% (51/126) |
+| Rows where this arm scored strictly higher | 67 | 11 |
+| Rows equal | 48 | 48 |
+| Mean per-row criterion-count delta | **+0.76** | — |
+
+Wilcoxon signed-rank on non-zero deltas: **p < 1e-6**. Methodology in
+[`docs/smoke-test-methodology.md`](docs/smoke-test-methodology.md).
+
+---
+
 ## License
 
 MIT
