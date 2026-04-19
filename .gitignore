@@ -26,3 +26,4 @@ venv/
 *.swo
 .securityeval-cache/
 .realworld-cache/
+.claude/scheduled_tasks.lock
