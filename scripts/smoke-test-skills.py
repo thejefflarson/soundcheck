@@ -156,27 +156,38 @@ def judge_review(
     code: str,
     model: str,
 ) -> tuple[bool, list[dict], str]:
-    """Judge a review against the verification criteria."""
+    """Judge a review against the verification criteria.
+
+    Returns (passed, criteria_results, error). `error` is empty on success.
+    An empty criteria list always counts as an error — a legitimate judge
+    response returns one entry per criterion. This prevents silent
+    parse-failure-as-score-zero rows from contaminating the paired
+    comparison. Retries once before giving up.
+    """
     criteria_block = "\n".join(f"- {c}" for c in criteria)
-    judge_text = claude_call(
-        JUDGE_PROMPT.format(
-            skill_name=skill_name,
-            criteria=criteria_block,
-            code=code,
-            response=review_text,
-        ),
-        JUDGE_SYSTEM,
-        model=model,
-    )
-    try:
-        result = json.loads(extract_json(judge_text))
-    except (json.JSONDecodeError, AttributeError) as exc:
-        return False, [], f"judge returned invalid JSON: {exc}"
-    return (
-        result.get("passed", False),
-        result.get("criteria", []),
-        "",
-    )
+    last_err = "judge returned no criteria"
+    for attempt in range(2):
+        judge_text = claude_call(
+            JUDGE_PROMPT.format(
+                skill_name=skill_name,
+                criteria=criteria_block,
+                code=code,
+                response=review_text,
+            ),
+            JUDGE_SYSTEM,
+            model=model,
+        )
+        try:
+            result = json.loads(extract_json(judge_text))
+        except (json.JSONDecodeError, AttributeError) as exc:
+            last_err = f"judge returned invalid JSON: {exc}"
+            continue
+        crit = result.get("criteria", [])
+        if not crit:
+            last_err = "judge returned empty criteria list"
+            continue
+        return result.get("passed", False), crit, ""
+    return False, [], last_err
 
 
 def run_paired_smoke(
@@ -205,7 +216,7 @@ def run_paired_smoke(
 
     # Plugin arm — skill is the system prompt
     plugin_review = claude_call(user_prompt, skill_content, model=model)
-    p_passed, p_crit, _ = judge_review(
+    p_passed, p_crit, p_err = judge_review(
         plugin_review, skill_name, criteria, code, model
     )
     if verbose:
@@ -217,10 +228,12 @@ def run_paired_smoke(
         "plugin_score": sum(1 for c in p_crit if c.get("passed")),
         "total_criteria": len(criteria),
     }
+    if p_err:
+        out["plugin_judge_error"] = p_err
 
     if include_bare:
         bare_review = claude_call(user_prompt, BARE_SYSTEM, model=model)
-        b_passed, b_crit, _ = judge_review(
+        b_passed, b_crit, b_err = judge_review(
             bare_review, skill_name, criteria, code, model
         )
         if verbose:
@@ -228,6 +241,8 @@ def run_paired_smoke(
         out["bare_passed"] = b_passed
         out["bare_criteria"] = b_crit
         out["bare_score"] = sum(1 for c in b_crit if c.get("passed"))
+        if b_err:
+            out["bare_judge_error"] = b_err
 
     return out
 
@@ -362,6 +377,7 @@ def main() -> int:
     bare_pass = 0
     deltas: list[int] = []
     rows_collected = 0
+    judge_errors = 0
 
     consecutive_cli_errors = 0
     aborted = False
@@ -391,6 +407,10 @@ def main() -> int:
             total = row["total_criteria"]
             p_score = row["plugin_score"]
             p_str = f"{p_score}/{total}"
+            judge_failed = (
+                "plugin_judge_error" in row
+                or (include_bare and "bare_judge_error" in row)
+            )
             if row["plugin_passed"]:
                 plugin_pass += 1
             if include_bare:
@@ -398,20 +418,36 @@ def main() -> int:
                 b_str = f"{b_score}/{total}"
                 if row["bare_passed"]:
                     bare_pass += 1
-                delta = p_score - b_score
-                deltas.append(delta)
-                d_str = f"{delta:+d}"
-                detail = (
-                    "plugin > bare" if delta > 0
-                    else ("plugin < bare" if delta < 0 else "same")
-                )
+                if judge_failed:
+                    # Don't let a judge-parse failure masquerade as a
+                    # score-zero row in the paired comparison.
+                    judge_errors += 1
+                    d_str = "?"
+                    which = []
+                    if "plugin_judge_error" in row:
+                        which.append("plugin")
+                    if "bare_judge_error" in row:
+                        which.append("bare")
+                    detail = f"judge failed ({'+'.join(which)}) — excluded from Wilcoxon"
+                else:
+                    delta = p_score - b_score
+                    deltas.append(delta)
+                    d_str = f"{delta:+d}"
+                    detail = (
+                        "plugin > bare" if delta > 0
+                        else ("plugin < bare" if delta < 0 else "same")
+                    )
             else:
                 b_str = ""
                 d_str = ""
-                detail = (
-                    f"all {total} criteria passed" if row["plugin_passed"]
-                    else f"{total - p_score}/{total} criteria failed"
-                )
+                if judge_failed:
+                    judge_errors += 1
+                    detail = "judge failed"
+                else:
+                    detail = (
+                        f"all {total} criteria passed" if row["plugin_passed"]
+                        else f"{total - p_score}/{total} criteria failed"
+                    )
             rows_collected += 1
 
         if include_bare:
@@ -448,12 +484,15 @@ def main() -> int:
     suffix = " (aborted)" if aborted else ""
 
     n = rows_collected
+    paired_n = len(deltas)
     if include_bare and n > 0:
         p_mean = plugin_pass / n
         b_mean = bare_pass / n
         print(f"\nPer-row full-pass rate (all criteria satisfied):")
         print(f"  Plugin: {plugin_pass}/{n} ({p_mean*100:.0f}%)")
         print(f"  Bare:   {bare_pass}/{n} ({b_mean*100:.0f}%)")
+        if judge_errors:
+            print(f"  Judge errors (excluded from paired stats): {judge_errors}")
 
         pos = sum(1 for d in deltas if d > 0)
         neg = sum(1 for d in deltas if d < 0)
