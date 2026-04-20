@@ -155,6 +155,16 @@ REVIEW_PROMPT = (
     "Identify all vulnerabilities and rewrite any insecure code."
 )
 
+# Bare arm: generic security-reviewer context, no skill content. Same shape
+# as smoke-test-skills.py for consistency.
+BARE_SYSTEM = (
+    "You are a security code reviewer. For the submitted file: identify "
+    "every vulnerability you can see, explain the risk in plain language, "
+    "and show a secure rewrite. Cover authentication, authorization, "
+    "injection, cryptography, error handling, logging, and any other "
+    "security concerns the code presents."
+)
+
 JUDGE_SYSTEM = (
     "You are a precise test evaluator for a security code review system. "
     "Evaluate whether a review response satisfies each criterion. "
@@ -274,47 +284,62 @@ def extract_json(text: str) -> str:
 # Benchmark
 # ---------------------------------------------------------------------------
 
+def _judge(code: str, cwe: str, review_text: str, model: str) -> dict:
+    judge_text = claude_call(
+        JUDGE_PROMPT.format(cwe=cwe, code=code, response=review_text),
+        JUDGE_SYSTEM,
+        model=model,
+    )
+    try:
+        result = json.loads(extract_json(judge_text))
+    except (json.JSONDecodeError, AttributeError):
+        return {"passed": False, "criteria": []}
+    return {
+        "passed": result.get("passed", False),
+        "criteria": result.get("criteria", []),
+    }
+
+
 def run_sample(
     skill_content: str,
     skill_name: str,
     sample: dict,
     model: str,
     verbose: bool,
+    include_bare: bool = False,
 ) -> dict:
-    """Run one SecurityEval sample through the skill and judge."""
+    """Run one SecurityEval sample through the skill and judge.
+
+    When include_bare is set, also runs a bare arm (neutral reviewer system
+    prompt, no skill content) for paired overfitting analysis.
+    """
     cwe = extract_cwe(sample["ID"])
     code = sample["Insecure_code"]
+    user_prompt = f"{REVIEW_PROMPT}\n\n```python\n{code}\n```"
 
-    review_text = claude_call(
-        f"{REVIEW_PROMPT}\n\n```python\n{code}\n```",
-        skill_content,
-        model=model,
-    )
-
+    plugin_review = claude_call(user_prompt, skill_content, model=model)
     if verbose:
-        print(f"\n  [review] {sample['ID']}")
-        print(f"  {review_text[:300]}{'...' if len(review_text) > 300 else ''}")
+        print(f"\n  [plugin review] {sample['ID']}")
+        print(f"  {plugin_review[:300]}{'...' if len(plugin_review) > 300 else ''}")
+    plugin_judgment = _judge(code, cwe, plugin_review, model)
 
-    judge_text = claude_call(
-        JUDGE_PROMPT.format(cwe=cwe, code=code, response=review_text),
-        JUDGE_SYSTEM,
-        model=model,
-    )
-
-    if verbose:
-        print(f"  [judge]  {judge_text}")
-
-    try:
-        result = json.loads(extract_json(judge_text))
-    except (json.JSONDecodeError, AttributeError):
-        result = {"passed": False, "criteria": []}
-
-    return {
+    out = {
         "id": sample["ID"],
         "cwe": cwe,
-        "passed": result.get("passed", False),
-        "criteria": result.get("criteria", []),
+        "passed": plugin_judgment["passed"],
+        "criteria": plugin_judgment["criteria"],
     }
+
+    if include_bare:
+        bare_review = claude_call(user_prompt, BARE_SYSTEM, model=model)
+        if verbose:
+            print(f"  [bare review]   {sample['ID']}")
+            print(f"  {bare_review[:300]}{'...' if len(bare_review) > 300 else ''}")
+        bare_judgment = _judge(code, cwe, bare_review, model)
+        out["bare_passed"] = bare_judgment["passed"]
+        out["bare_criteria"] = bare_judgment["criteria"]
+
+    return out
 
 
 def run_skill_benchmark(
@@ -323,6 +348,7 @@ def run_skill_benchmark(
     model: str,
     limit: int | None,
     verbose: bool,
+    include_bare: bool = False,
 ) -> dict:
     """Benchmark one skill against all its SecurityEval samples."""
     skill_path = SKILLS_DIR / skill_name / "SKILL.md"
@@ -339,7 +365,10 @@ def run_skill_benchmark(
         if i > 0:
             time.sleep(2)
         try:
-            result = run_sample(skill_content, skill_name, sample, model, verbose)
+            result = run_sample(
+                skill_content, skill_name, sample, model, verbose,
+                include_bare=include_bare,
+            )
         except (RuntimeError, subprocess.TimeoutExpired) as exc:
             result = {
                 "id": sample["ID"],
@@ -350,26 +379,19 @@ def run_skill_benchmark(
             }
         results.append(result)
 
+    def criterion_pass(r: dict, crit_key: str, which: str = "plugin") -> bool:
+        crit_field = "criteria" if which == "plugin" else "bare_criteria"
+        return any(
+            c.get("criterion") == crit_key and c.get("passed")
+            for c in r.get(crit_field, [])
+        )
+
     total = len(results)
     passed = sum(1 for r in results if r["passed"])
-    detected = sum(
-        1
-        for r in results
-        if any(
-            c.get("criterion") == "DETECTION" and c.get("passed")
-            for c in r["criteria"]
-        )
-    )
-    fixed = sum(
-        1
-        for r in results
-        if any(
-            c.get("criterion") == "FIX" and c.get("passed")
-            for c in r["criteria"]
-        )
-    )
+    detected = sum(1 for r in results if criterion_pass(r, "DETECTION"))
+    fixed = sum(1 for r in results if criterion_pass(r, "FIX"))
 
-    return {
+    summary = {
         "skill": skill_name,
         "total": total,
         "passed": passed,
@@ -378,6 +400,16 @@ def run_skill_benchmark(
         "fix_rate": fixed / total if total else 0,
         "results": results,
     }
+
+    if include_bare:
+        b_passed = sum(1 for r in results if r.get("bare_passed"))
+        b_detected = sum(1 for r in results if criterion_pass(r, "DETECTION", "bare"))
+        b_fixed = sum(1 for r in results if criterion_pass(r, "FIX", "bare"))
+        summary["bare_passed"] = b_passed
+        summary["bare_detection_rate"] = b_detected / total if total else 0
+        summary["bare_fix_rate"] = b_fixed / total if total else 0
+
+    return summary
 
 
 def print_skill_summary(summary: dict, verbose: bool) -> None:
@@ -428,6 +460,11 @@ def main() -> int:
     parser.add_argument(
         "--unmapped", action="store_true", help="List SecurityEval CWEs with no skill mapping and exit"
     )
+    parser.add_argument(
+        "--with-bare", action="store_true",
+        help="Also run each sample with a neutral reviewer (no skill content) "
+        "and report a paired plugin-vs-bare comparison",
+    )
     args = parser.parse_args()
 
     samples = fetch_dataset(Path(args.dataset) if args.dataset else None)
@@ -474,7 +511,8 @@ def main() -> int:
         cwes = sorted({extract_cwe(s["ID"]) for s in samples_for_skill})
         print(f"> {skill_name}  [{', '.join(cwes)}]  {len(samples_for_skill)} sample(s)")
         summary = run_skill_benchmark(
-            skill_name, samples_for_skill, args.model, args.limit, args.verbose
+            skill_name, samples_for_skill, args.model, args.limit,
+            args.verbose, include_bare=args.with_bare,
         )
         print_skill_summary(summary, args.verbose)
         all_summaries.append(summary)
@@ -492,13 +530,36 @@ def main() -> int:
 
     print("=" * 72)
     print(f"AGGREGATE  {total_passed}/{total_samples} fully passed")
-    print(f"           avg detection rate: {int(avg_detect * 100)}%")
-    print(f"           avg fix rate:       {int(avg_fix * 100)}%")
+    print(f"           plugin detection rate: {int(avg_detect * 100)}%")
+    print(f"           plugin fix rate:       {int(avg_fix * 100)}%")
+
+    if args.with_bare:
+        total_bare_passed = sum(s.get("bare_passed", 0) for s in valid)
+        avg_bare_detect = sum(
+            s.get("bare_detection_rate", 0) for s in valid
+        ) / len(valid)
+        avg_bare_fix = sum(
+            s.get("bare_fix_rate", 0) for s in valid
+        ) / len(valid)
+        print()
+        print(f"           bare-arm full-pass:    {total_bare_passed}/{total_samples}")
+        print(f"           bare-arm detection:    {int(avg_bare_detect * 100)}%")
+        print(f"           bare-arm fix rate:     {int(avg_bare_fix * 100)}%")
+        # Per-sample paired agreement across all skills
+        pos = neg = zero = 0
+        for s in valid:
+            for r in s["results"]:
+                p = 1 if r.get("passed") else 0
+                b = 1 if r.get("bare_passed") else 0
+                if p > b: pos += 1
+                elif b > p: neg += 1
+                else: zero += 1
+        print(f"\n           plugin > bare: {pos}   plugin < bare: {neg}   equal: {zero}")
 
     # Skills with lowest detection rate
     weak = sorted(valid, key=lambda s: s["detection_rate"])[:3]
     if weak and weak[0]["detection_rate"] < 1.0:
-        print("\nLowest detection rates:")
+        print("\nLowest plugin detection rates:")
         for s in weak:
             if s["detection_rate"] < 1.0:
                 print(f"  {s['skill']:<28} {int(s['detection_rate'] * 100)}%")

@@ -219,6 +219,25 @@ Haiku run, 126 rows after excluding judge-parse failures:
 Wilcoxon signed-rank on non-zero deltas: **p < 1e-6**. Methodology in
 [`docs/smoke-test-methodology.md`](docs/smoke-test-methodology.md).
 
+### External validation — SecurityEval
+
+Smoke runs on our own fixtures and criteria, so it could in principle be overfit
+to the exact patterns we wrote. As an independent check, Soundcheck is also run
+against [SecurityEval](https://github.com/s2e-lab/SecurityEval) — 104 vulnerable
+Python samples across ~50 CWEs, authored by academic researchers and tagged
+with ground-truth labels.
+
+Haiku, plugin arm only:
+
+| | Value |
+|---|---|
+| Full-pass (vulnerability detected, categorized, and fixed) | **102/104 (98%)** |
+| Detection rate | 99% |
+| Fix rate | 99% |
+| Lowest-performing skills | `cryptographic-failures` 94%, `broken-access-control` 94% |
+
+Runs via `scripts/benchmark-securityeval.py`.
+
 ---
 
 ## License
