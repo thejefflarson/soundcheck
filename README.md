@@ -219,24 +219,41 @@ stays ~30pts ahead regardless. The same effect holds at both capability tiers.
 Methodology and why Wilcoxon in
 [`docs/smoke-test-methodology.md`](docs/smoke-test-methodology.md).
 
-### External validation — SecurityEval
+### External validation
 
 Smoke runs on our own fixtures and criteria, so it could in principle be overfit
-to the exact patterns we wrote. As an independent check, Soundcheck is also run
-against [SecurityEval](https://github.com/s2e-lab/SecurityEval) — 104 vulnerable
-Python samples across ~50 CWEs, authored by academic researchers and tagged
-with ground-truth labels.
+to the exact patterns we wrote. Two independent checks:
 
-Haiku, plugin arm only:
+**[SecurityEval](https://github.com/s2e-lab/SecurityEval)** — 104 vulnerable Python
+samples across ~50 CWEs, authored by academic researchers with ground-truth labels
+(`scripts/benchmark-securityeval.py --with-bare`, haiku):
+
+| | Plugin | Bare |
+|---|---|---|
+| Full-pass | 104/104 (100%) | 104/104 (100%) |
+| Detection | 100% | 100% |
+| Fix | 100% | 100% |
+
+Zero discordant pairs. SecurityEval samples are CWE-tagged one-file snippets that a
+generic "security reviewer" prompt catches trivially, so both arms saturate at
+ceiling. This confirms the plugin *does not regress* on external fixtures and rules
+out overfitting-induced breakage, but the benchmark can't discriminate further.
+Plugin review latency median is 15.2s vs bare 17.7s — the narrower focus of a
+skill-loaded review is slightly faster, not slower.
+
+**Real-world OWASP projects** — 13 vulnerable files pinned at specific commits from
+OWASP Juice Shop (TypeScript) and OWASP PyGoat (Python), covering SQL/NoSQL
+injection, broken access control, SSRF, path traversal, weak crypto, unsafe
+deserialization, and auth (`scripts/benchmark-realworld.py`, haiku, plugin arm):
 
 | | Value |
 |---|---|
-| Full-pass (vulnerability detected, categorized, and fixed) | **102/104 (98%)** |
-| Detection rate | 99% |
-| Fix rate | 99% |
-| Lowest-performing skills | `cryptographic-failures` 94%, `broken-access-control` 94% |
+| Full-pass | 12/13 (92%) |
+| Detection | 100% |
+| Fix | 96% |
 
-Runs via `scripts/benchmark-securityeval.py`.
+Single miss: open-redirect in `juice-shop/routes/redirect.ts` — the vulnerability
+was detected but the proposed fix didn't fully address the allowlist-substring bug.
 
 ---
 
