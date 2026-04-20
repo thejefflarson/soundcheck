@@ -285,18 +285,21 @@ def extract_json(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _judge(code: str, cwe: str, review_text: str, model: str) -> dict:
+    t0 = time.monotonic()
     judge_text = claude_call(
         JUDGE_PROMPT.format(cwe=cwe, code=code, response=review_text),
         JUDGE_SYSTEM,
         model=model,
     )
+    elapsed = time.monotonic() - t0
     try:
         result = json.loads(extract_json(judge_text))
     except (json.JSONDecodeError, AttributeError):
-        return {"passed": False, "criteria": []}
+        return {"passed": False, "criteria": [], "judge_sec": round(elapsed, 2)}
     return {
         "passed": result.get("passed", False),
         "criteria": result.get("criteria", []),
+        "judge_sec": round(elapsed, 2),
     }
 
 
@@ -317,7 +320,9 @@ def run_sample(
     code = sample["Insecure_code"]
     user_prompt = f"{REVIEW_PROMPT}\n\n```python\n{code}\n```"
 
+    t0 = time.monotonic()
     plugin_review = claude_call(user_prompt, skill_content, model=model)
+    plugin_review_sec = round(time.monotonic() - t0, 2)
     if verbose:
         print(f"\n  [plugin review] {sample['ID']}")
         print(f"  {plugin_review[:300]}{'...' if len(plugin_review) > 300 else ''}")
@@ -328,16 +333,23 @@ def run_sample(
         "cwe": cwe,
         "passed": plugin_judgment["passed"],
         "criteria": plugin_judgment["criteria"],
+        "plugin_review_sec": plugin_review_sec,
+        "plugin_judge_sec": plugin_judgment.get("judge_sec"),
+        "skill_word_count": len(skill_content.split()),
     }
 
     if include_bare:
+        t1 = time.monotonic()
         bare_review = claude_call(user_prompt, BARE_SYSTEM, model=model)
+        bare_review_sec = round(time.monotonic() - t1, 2)
         if verbose:
             print(f"  [bare review]   {sample['ID']}")
             print(f"  {bare_review[:300]}{'...' if len(bare_review) > 300 else ''}")
         bare_judgment = _judge(code, cwe, bare_review, model)
         out["bare_passed"] = bare_judgment["passed"]
         out["bare_criteria"] = bare_judgment["criteria"]
+        out["bare_review_sec"] = bare_review_sec
+        out["bare_judge_sec"] = bare_judgment.get("judge_sec")
 
     return out
 
@@ -563,8 +575,24 @@ def main() -> int:
         for s in weak:
             if s["detection_rate"] < 1.0:
                 print(f"  {s['skill']:<28} {int(s['detection_rate'] * 100)}%")
-    print()
 
+    # Latency summary
+    def _pct(xs: list[float], p: float) -> float:
+        if not xs: return 0.0
+        s = sorted(xs)
+        return s[max(0, min(len(s)-1, int(round((len(s)-1)*p/100))))]
+
+    all_rows = [r for s in valid for r in s["results"]]
+    p_rev = [r["plugin_review_sec"] for r in all_rows if r.get("plugin_review_sec") is not None]
+    if p_rev:
+        print("\nLatency (seconds per call):")
+        print(f"  plugin review — p50 {_pct(p_rev, 50):.1f}s  p95 {_pct(p_rev, 95):.1f}s  max {max(p_rev):.1f}s")
+        if args.with_bare:
+            b_rev = [r["bare_review_sec"] for r in all_rows if r.get("bare_review_sec") is not None]
+            if b_rev:
+                print(f"  bare review   — p50 {_pct(b_rev, 50):.1f}s  p95 {_pct(b_rev, 95):.1f}s  max {max(b_rev):.1f}s")
+
+    print()
     return 0 if total_passed == total_samples else 1
 
 

@@ -215,10 +215,13 @@ def run_paired_smoke(
     user_prompt = f"{prompt}\n\n```\n{code}\n```"
 
     # Plugin arm — skill is the system prompt
+    t0 = time.monotonic()
     plugin_review = claude_call(user_prompt, skill_content, model=model)
+    t1 = time.monotonic()
     p_passed, p_crit, p_err = judge_review(
         plugin_review, skill_name, criteria, code, model
     )
+    t2 = time.monotonic()
     if verbose:
         print(f"\n--- plugin review: {skill_name} ---\n{plugin_review}")
 
@@ -227,20 +230,28 @@ def run_paired_smoke(
         "plugin_criteria": p_crit,
         "plugin_score": sum(1 for c in p_crit if c.get("passed")),
         "total_criteria": len(criteria),
+        "plugin_review_sec": round(t1 - t0, 2),
+        "plugin_judge_sec": round(t2 - t1, 2),
+        "skill_word_count": len(skill_content.split()),
     }
     if p_err:
         out["plugin_judge_error"] = p_err
 
     if include_bare:
+        t3 = time.monotonic()
         bare_review = claude_call(user_prompt, BARE_SYSTEM, model=model)
+        t4 = time.monotonic()
         b_passed, b_crit, b_err = judge_review(
             bare_review, skill_name, criteria, code, model
         )
+        t5 = time.monotonic()
         if verbose:
             print(f"\n--- bare review: {skill_name} ---\n{bare_review}")
         out["bare_passed"] = b_passed
         out["bare_criteria"] = b_crit
         out["bare_score"] = sum(1 for c in b_crit if c.get("passed"))
+        out["bare_review_sec"] = round(t4 - t3, 2)
+        out["bare_judge_sec"] = round(t5 - t4, 2)
         if b_err:
             out["bare_judge_error"] = b_err
 
@@ -519,6 +530,46 @@ def main() -> int:
     elif not include_bare:
         print(f"\nResults: {plugin_pass} passed, "
               f"{rows_collected - plugin_pass} failed{suffix}")
+
+    # Latency summary from the emitted JSONL.
+    def _percentile(values: list[float], pct: float) -> float:
+        if not values:
+            return 0.0
+        s = sorted(values)
+        k = max(0, min(len(s) - 1, int(round((len(s) - 1) * pct / 100))))
+        return s[k]
+
+    rows_with_timings = []
+    with results_path.open() as fh:
+        for line in fh:
+            rr = json.loads(line)
+            if "plugin_review_sec" in rr:
+                rows_with_timings.append(rr)
+
+    if rows_with_timings:
+        p_rev = [r["plugin_review_sec"] for r in rows_with_timings]
+        p_jud = [r["plugin_judge_sec"] for r in rows_with_timings]
+        print("\nLatency (seconds per call):")
+        print(f"  plugin review  — p50 {_percentile(p_rev, 50):.1f}s  "
+              f"p95 {_percentile(p_rev, 95):.1f}s  max {max(p_rev):.1f}s")
+        print(f"  plugin judge   — p50 {_percentile(p_jud, 50):.1f}s  "
+              f"p95 {_percentile(p_jud, 95):.1f}s")
+        if include_bare and any("bare_review_sec" in r for r in rows_with_timings):
+            b_rev = [r["bare_review_sec"] for r in rows_with_timings if "bare_review_sec" in r]
+            b_jud = [r["bare_judge_sec"] for r in rows_with_timings if "bare_judge_sec" in r]
+            print(f"  bare review    — p50 {_percentile(b_rev, 50):.1f}s  "
+                  f"p95 {_percentile(b_rev, 95):.1f}s  max {max(b_rev):.1f}s")
+            print(f"  bare judge     — p50 {_percentile(b_jud, 50):.1f}s  "
+                  f"p95 {_percentile(b_jud, 95):.1f}s")
+            # Plugin overhead vs bare at review time
+            paired_rev = [
+                (r["plugin_review_sec"], r["bare_review_sec"])
+                for r in rows_with_timings if "bare_review_sec" in r
+            ]
+            if paired_rev:
+                overhead = [p - b for p, b in paired_rev]
+                med = sorted(overhead)[len(overhead) // 2]
+                print(f"  plugin review overhead vs bare  — median {med:+.1f}s")
 
     print(f"\nPer-row results written to: {results_path}\n")
 
