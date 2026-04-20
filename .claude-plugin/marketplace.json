@@ -1,11 +1,13 @@
 {
   "name": "soundcheck",
-  "owner": { "name": "Jeff" },
+  "owner": {
+    "name": "Jeff"
+  },
   "plugins": [
     {
       "name": "soundcheck",
       "description": "45 security skills covering OWASP Web Top 10:2025, LLM Top 10:2025, and API Security Top 10:2023. Auto-invokes on vulnerable code and rewrites it inline.",
-      "version": "1.7.0",
+      "version": "1.8.0",
       "license": "MIT",
       "source": {
         "source": "github",
