@@ -207,16 +207,16 @@ vulnerable fixtures twice — once with Soundcheck's skill content loaded as
 system context, once with a neutral security-reviewer system prompt — then
 scores both reviews against the skill's own verification criteria.
 
-Haiku run, 126 rows after excluding judge-parse failures:
+Across two model strengths (after excluding judge-parse failures):
 
-| | Plugin | Bare |
-|---|---|---|
-| Full-pass rate (every criterion satisfied) | **77%** (98/126) | 40% (51/126) |
-| Rows where this arm scored strictly higher | 67 | 11 |
-| Rows equal | 48 | 48 |
-| Mean per-row criterion-count delta | **+0.76** | — |
+| Model | Rows | Plugin full-pass | Bare full-pass | Gap | +plugin | −plugin | Wilcoxon p |
+|---|---|---|---|---|---|---|---|
+| Haiku | 126 | **77%** (98/126) | 40% (51/126) | **+37pts** | 67 | 11 | < 1e-6 |
+| Sonnet | 130 | **90%** (117/130) | 58% (75/130) | **+32pts** | 48 | 7 | < 1e-4 |
 
-Wilcoxon signed-rank on non-zero deltas: **p < 1e-6**. Methodology in
+Bare baseline climbs 18pts moving haiku → sonnet (stronger base model), but plugin
+stays ~30pts ahead regardless. The same effect holds at both capability tiers.
+Methodology and why Wilcoxon in
 [`docs/smoke-test-methodology.md`](docs/smoke-test-methodology.md).
 
 ### External validation — SecurityEval
