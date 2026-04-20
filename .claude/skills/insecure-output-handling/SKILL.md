@@ -58,7 +58,7 @@ Confirm the response:
 
 - [ ] No LLM string is assigned to `innerHTML` or `dangerouslySetInnerHTML` without `DOMPurify.sanitize`
 - [ ] Shell execution uses an allowlist; `shell=True` is never passed with LLM-derived input
-- [ ] All database queries use parameterized placeholders, not f-strings with LLM output
+- [ ] If the code routes LLM output into a database query, the query uses parameterized placeholders — not an f-string or concatenation with the LLM-derived value. Skip this criterion when the code does not execute any database query.
 - [ ] LLM output is treated as untrusted user input at every consumption point
 
 ## References
