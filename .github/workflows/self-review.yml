@@ -23,7 +23,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
+      # Check out the PR HEAD to the default workspace for the review.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Check out the base branch to a sibling directory. The reviewer's
+      # SKILL.md is loaded from here, not from the PR checkout, so a PR
+      # that edits .claude/skills/security-review/SKILL.md cannot override
+      # the reviewer's system prompt and flip the gate.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: .soundcheck-trusted-skills
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
@@ -39,11 +49,37 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
+          # Resolve the skill path to an absolute, trusted location (base
+          # branch of this repo) so the PR checkout cannot override it.
+          TRUSTED_SKILL="$(pwd)/.soundcheck-trusted-skills/.claude/skills/security-review/SKILL.md"
           python scripts/security-review-action.py \
             --repo-dir . \
+            --skill-path "$TRUSTED_SKILL" \
             --diff-base "origin/$BASE_REF" \
-            --output-summary /tmp/self-review-summary.md
+            --output-summary /tmp/self-review-summary.md \
+            --audit-log /tmp/self-review-audit.json
 
       - name: Append to job summary
         if: always()
-        run: cat /tmp/self-review-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+        run: |
+          cat /tmp/self-review-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+          if [ -f /tmp/self-review-audit.json ]; then
+            {
+              echo
+              echo '<details><summary>Audit record</summary>'
+              echo
+              echo '```json'
+              cat /tmp/self-review-audit.json
+              echo
+              echo '```'
+              echo '</details>'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload audit record
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: soundcheck-self-review-audit
+          path: /tmp/self-review-audit.json
+          if-no-files-found: ignore

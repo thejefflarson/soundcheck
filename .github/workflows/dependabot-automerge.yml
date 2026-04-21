@@ -20,10 +20,22 @@ jobs:
         id: meta
         uses: dependabot/fetch-metadata@ffa630c65fa7e0ecfa0625b5ceda64399aea1b36 # v3.0.0
 
-      - name: Enable auto-merge for patch/minor updates
+      # Only auto-merge patch bumps, and only for packages on an explicit
+      # allowlist. Minor bumps require a human because they can land
+      # feature-scale changes, and unknown packages could introduce
+      # attacker-controlled code via a compromised upstream. Repository
+      # branch protection must also require `self-review` and
+      # `static-checks` to succeed before --auto can merge the PR.
+      - name: Enable auto-merge for allowlisted patch updates
         if: |
-          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-          steps.meta.outputs.update-type == 'version-update:semver-minor'
+          steps.meta.outputs.update-type == 'version-update:semver-patch' &&
+          contains(fromJSON('[
+            "actions/checkout",
+            "actions/setup-python",
+            "actions/setup-node",
+            "actions/upload-artifact",
+            "dependabot/fetch-metadata"
+          ]'), steps.meta.outputs.dependency-names)
         run: gh pr merge --auto --merge "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

@@ -11,7 +11,8 @@
       "license": "MIT",
       "source": {
         "source": "github",
-        "repo": "thejefflarson/soundcheck"
+        "repo": "thejefflarson/soundcheck",
+        "ref": "v1.8.0"
       }
     }
   ]

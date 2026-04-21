@@ -68,17 +68,51 @@ def count_skills() -> int:
 
 
 def next_action_version(action_dir: Path) -> str:
-    """Find the highest v1.0.N tag in soundcheck-action and return v1.0.(N+1)."""
-    run(["git", "fetch", "--tags", "origin"], cwd=action_dir, check=False)
-    tags = run(["git", "tag", "-l", "v1.0.*"], cwd=action_dir).splitlines()
+    """Find the highest v1.0.N tag in soundcheck-action and return v1.0.(N+1).
+
+    Fetches both local-known tags and the authoritative remote tag list so
+    a stale local clone can't pick a patch number that already exists on
+    origin.
+    """
+    try:
+        run(["git", "fetch", "--tags", "origin"], cwd=action_dir)
+    except subprocess.CalledProcessError as exc:
+        raise ReleaseError(
+            f"git fetch failed in {action_dir}: {exc.stderr or exc}"
+        ) from exc
+    local_tags = run(["git", "tag", "-l", "v1.0.*"], cwd=action_dir).splitlines()
+    remote_listing = run(
+        ["git", "ls-remote", "--tags", "origin", "refs/tags/v1.0.*"],
+        cwd=action_dir,
+    ).splitlines()
+    remote_tags = [
+        line.split("refs/tags/")[-1] for line in remote_listing if "refs/tags/" in line
+    ]
     patches = []
-    for t in tags:
+    for t in list(local_tags) + list(remote_tags):
         m = re.fullmatch(r"v1\.0\.(\d+)", t.strip())
         if m:
             patches.append(int(m.group(1)))
     if not patches:
         raise ReleaseError("No v1.0.* tags found in soundcheck-action")
     return f"v1.0.{max(patches) + 1}"
+
+
+def verify_remote_has_commit(repo: Path, commit: str) -> None:
+    """Fail loudly if `commit` is not reachable from origin."""
+    try:
+        output = run(
+            ["git", "branch", "-r", "--contains", commit], cwd=repo
+        )
+    except subprocess.CalledProcessError as exc:
+        raise ReleaseError(
+            f"verifying remote has {commit[:8]} failed: {exc.stderr or exc}"
+        ) from exc
+    if not any(line.strip().startswith("origin/") for line in output.splitlines()):
+        raise ReleaseError(
+            f"commit {commit[:8]} is not present on any origin branch — "
+            f"refusing to move the v1 tag to an unpushed SHA"
+        )
 
 
 def update_plugin_json(version: str) -> tuple[str, str]:
@@ -102,12 +136,19 @@ def update_marketplace_json(version: str, skill_count: int) -> dict[str, str]:
         old_desc,
     )
     plugin["description"] = new_desc
+    # Pin the marketplace source to the release tag so downstream installs
+    # follow maintainer-signed tags rather than main.
+    source = plugin.setdefault("source", {})
+    old_ref = source.get("ref")
+    source["ref"] = f"v{version}"
     MARKETPLACE_JSON.write_text(json.dumps(data, indent=2) + "\n")
     return {
         "old_version": old_version,
         "new_version": version,
         "old_desc": old_desc,
         "new_desc": new_desc,
+        "old_ref": old_ref or "(unset)",
+        "new_ref": source["ref"],
     }
 
 
@@ -199,6 +240,12 @@ def plan_and_apply(args: argparse.Namespace) -> int:
     # --- Step 3: update soundcheck-action ---
     print(f"\nStep 3: bump SOUNDCHECK_SHA in {action_dir}/action.yml")
     if args.push:
+        # Verify the soundcheck commit we just pushed is actually reachable
+        # from origin before moving the floating v1 tag. A push that
+        # succeeded locally but got rejected by the remote would otherwise
+        # silently point every downstream @v1 consumer at an unreachable
+        # SHA.
+        verify_remote_has_commit(SOUNDCHECK_DIR, soundcheck_sha)
         old_sha, new_sha = update_action_sha(action_dir, soundcheck_sha)
         print(f"  {old_sha}\n    → {new_sha}")
     else:

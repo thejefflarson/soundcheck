@@ -4,14 +4,31 @@ All Soundcheck Python tools shell out to the `claude` CLI rather than
 calling the Anthropic SDK directly, so they share the same auth, plugin
 state, and tool access. This module centralizes the subprocess
 invocation so every caller uses identical argument handling.
+
+Safety rails enforced here (single choke point for every LLM call):
+
+- ``SOUNDCHECK_DISABLE=1`` in the environment raises ``ClaudeCLIError``
+  before any subprocess is spawned — a kill switch for incident
+  response.
+- ``timeout`` is clamped to ``[MIN_TIMEOUT_SEC, MAX_TIMEOUT_SEC]`` so a
+  misconfigured caller can't pass a zero-timeout (instant failure) or
+  effectively-infinite timeout.
+- ``max_budget_usd`` no longer defaults to ``None``. Callers that do not
+  want a cap must pass ``0`` explicitly; everything else is clamped to
+  ``[0, MAX_BUDGET_CAP_USD]``.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
+MIN_TIMEOUT_SEC = 30
+MAX_TIMEOUT_SEC = 1800
+MAX_BUDGET_CAP_USD = 20.0
+
 
 class ClaudeCLIError(RuntimeError):
-    """Raised when `claude -p` exits non-zero."""
+    """Raised when `claude -p` exits non-zero or the call is refused."""
 
 
 def run_claude(
@@ -23,7 +40,7 @@ def run_claude(
     allowed_tools: str | None = None,
     disable_tools: bool = False,
     append_system_prompt: str | None = None,
-    max_budget_usd: float | None = None,
+    max_budget_usd: float = 1.0,
     timeout: int = 900,
 ) -> str:
     """Shell out to `claude -p` and return stdout.
@@ -50,6 +67,17 @@ def run_claude(
     if disable_tools and allowed_tools:
         raise ValueError("disable_tools and allowed_tools are mutually exclusive")
 
+    if os.environ.get("SOUNDCHECK_DISABLE") == "1":
+        raise ClaudeCLIError(
+            "SOUNDCHECK_DISABLE=1 kill switch is set; refusing to run claude"
+        )
+
+    timeout = max(MIN_TIMEOUT_SEC, min(int(timeout), MAX_TIMEOUT_SEC))
+    if max_budget_usd is None or max_budget_usd < 0:
+        max_budget_usd = 0.0
+    else:
+        max_budget_usd = min(float(max_budget_usd), MAX_BUDGET_CAP_USD)
+
     cmd = ["claude", "-p", "--model", model, "--system-prompt", system_prompt]
     if append_system_prompt is not None:
         cmd.extend(["--append-system-prompt", append_system_prompt])
@@ -57,7 +85,7 @@ def run_claude(
         cmd.extend(["--tools", ""])
     elif allowed_tools is not None:
         cmd.extend(["--allowed-tools", allowed_tools])
-    if max_budget_usd is not None:
+    if max_budget_usd > 0:
         cmd.extend(["--max-budget-usd", str(max_budget_usd)])
 
     result = subprocess.run(
