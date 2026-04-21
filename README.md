@@ -245,20 +245,36 @@ Soundcheck caught and fully fixed **12 of 13 (92%)**, with 100% detection across
 all 13. The one miss — an open-redirect in Juice Shop's `redirect.ts` — was
 detected but only partially fixed.
 
-### How fast is it?
+### How long does a review take?
 
-About **1 line of code reviewed per second on haiku**. In concrete terms:
+Running Soundcheck's full three-stage review pipeline (hotspot map → threat
+model → security review) against four open-source projects at pinned commits
+(`scripts/benchmark-eval.py`):
 
-- A short function (~15 lines) reviews in about 15 seconds.
-- A typical 50-line file takes under a minute.
-- A 200-line file takes 2–3 minutes.
+| Repo | Language | Haiku | Sonnet |
+|---|---|---|---|
+| [redash](https://github.com/getredash/redash) | Python | **6.1 min** | 17.3 min |
+| [gitea](https://github.com/go-gitea/gitea) | Go | **6.2 min** | 6.6 min + timeout on security-review* |
+| [cal.com](https://github.com/calcom/cal.com) | TypeScript | **8.7 min** | 25.7 min |
+| [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **5.7 min** | 14.7 min |
+| **Totals** | | **26.6 min review / 52.5 min wall** | **64.3 min review / 111.9 min wall** |
 
-Sonnet is slower (better output, more tokens) — roughly half the throughput.
+\* Sonnet's full-audit security-review on gitea exceeded the 20-minute
+per-call timeout. Haiku completed gitea in 2 minutes. Sonnet is the better
+auditor when it finishes but cal.com and gitea push the limits of a single
+review call — for those codebases, the PR-scoped `--diff-base` mode (which
+only reviews changed files) is the practical option.
 
-Loading Soundcheck **doesn't slow anything down**. On the SecurityEval benchmark
-we measured plugin-loaded reviews at 15.2s median vs plain Claude at 17.7s median —
-the skill's narrower focus produces tighter output, so reviews finish slightly
-faster, not slower.
+Practical guidance:
+
+- **Haiku is fast enough for PR-gate use** — typical diff-scoped reviews
+  complete in 1–2 minutes. Full-repo audits average ~7 minutes per repo.
+- **Sonnet is for monthly/quarterly deep scans** — higher-quality findings
+  but 3–4× the time per call, and hits timeouts on the largest codebases.
+- **Soundcheck itself doesn't add review latency.** On the SecurityEval
+  paired run we measured plugin-loaded reviews at 15.2s median vs plain
+  Claude at 17.7s median — the skill's narrower focus finishes slightly
+  faster, not slower.
 
 ### Details for the curious
 
