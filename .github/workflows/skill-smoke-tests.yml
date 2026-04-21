@@ -116,18 +116,52 @@ jobs:
   quarterly-threat-review:
     name: Open quarterly threat radar review issue
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     # Only runs on the quarterly schedule (10:00 UTC = distinct from weekly 09:00)
     if: github.event_name == 'schedule' && github.event.schedule == '0 10 1-7 1,4,7,10 1'
     permissions:
       issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "20"
+
+      - name: Install claude CLI
+        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
+
+      - name: Draft quarterly threat review
+        id: draft
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Script shells out to claude -p with WebSearch/WebFetch/Read and
+          # emits the full issue body on stdout. If it fails, fall back to
+          # a minimal checklist so the quarterly cadence still fires.
+          if python scripts/quarterly-threat-review.py > /tmp/quarterly.md; then
+            echo "drafted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drafted=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "_Automated draft failed — falling back to manual checklist._"
+              echo
+              echo "- [ ] Review \`docs/threat-radar.md\`"
+              echo "- [ ] Check OWASP LLM/API Top 10 for new drafts"
+              echo "- [ ] Search NVD for new AI/LLM CVEs since last review"
+              echo "- [ ] Review closed \`threat-candidate\` issues"
+              echo "- [ ] Verify \`shipped\` skills still reflect current patterns"
+            } > /tmp/quarterly.md
+          fi
 
       - name: Open threat radar review issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
+            const fs = require('fs');
             const now = new Date();
             const quarter = Math.ceil((now.getMonth() + 1) / 3);
             const year = now.getFullYear();
@@ -146,19 +180,7 @@ jobs:
               return;
             }
 
-            const body = [
-              "Automated quarterly prompt to review `docs/threat-radar.md` and triage new threats.",
-              "",
-              "## Checklist",
-              "",
-              "- [ ] Review `docs/threat-radar.md` — promote any `watching` entries to `candidate` if patterns are now code-detectable",
-              "- [ ] Check OWASP for new draft publications (https://owasp.org/www-project-top-10-for-large-language-model-applications/)",
-              "- [ ] Check NVD for new AI/LLM CVEs since last review (https://nvd.nist.gov/)",
-              "- [ ] Review closed `threat-candidate` issues for nomination patterns",
-              "- [ ] Verify all `shipped` skills still reflect current attack patterns",
-              "",
-              "Close this issue when the review is complete and `threat-radar.md` has been updated.",
-            ].join("\n");
+            const body = fs.readFileSync('/tmp/quarterly.md', 'utf8');
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
