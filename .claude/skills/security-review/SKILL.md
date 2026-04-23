@@ -17,8 +17,7 @@ Delegates to subagents applying the Soundcheck skill suite.
 ## Procedure
 
 Use the **Agent** tool. **Main loop ONLY dispatches Agent calls and merges
-JSON — never Read/Grep/Glob/Bash in main context. All inspection happens
-in subagents.**
+JSON — never Read/Grep/Glob/Bash in main context.**
 
 ### Skill catalog (auditors must name one of these)
 
@@ -88,15 +87,18 @@ Concatenate all returned arrays. Dedupe by `(file, line)`.
 
 > "Given findings `<merged>`, find chains where one finding enables
 > another. Verify reachability via Read/Grep. Return ONLY
-> `[{chain_id, finding_ids, narrative, effective_severity, attacker_flow},
-> ...]`. Empty if none."
+> `[{chain_id, finding_ids, effective_severity, narrative}, ...]`.
+> `narrative` is a 2–4 sentence plain-English story of what the
+> attacker sends, what breaks, and what they walk away with. No JSON,
+> no numbered steps, no code. Empty if none."
 
 ### Stage 4 — Render
 
 Emit `# Security Review`, findings table (severity/file:line/skill/
-finding/fix), optional `## Attack chains` with attacker flow in plain
-English. One summary line. Zero findings: `Security review complete.
-No findings across N hotspots.`
+finding/fix). If chains exist, emit `## Attack chains` with one
+subsection per chain: `### Chain N — <effective_severity>`, then the
+`narrative` as a prose paragraph. One summary line. Zero findings:
+`Security review complete. No findings across N hotspots.`
 
 ### Stage 5 — Cleanup
 
