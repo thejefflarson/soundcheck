@@ -63,7 +63,7 @@ def get_changed_files(repo_dir: Path, diff_base: str) -> list[str]:
         return []
     try:
         result = subprocess.run(
-            ["git", "diff", "--name-only", "--diff-filter=ACMR", "--", diff_base],
+            ["git", "diff", "--name-only", "--diff-filter=ACMR", diff_base],
             capture_output=True, text=True, cwd=repo_dir,
             timeout=GIT_DIFF_TIMEOUT,
         )
