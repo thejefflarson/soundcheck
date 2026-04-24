@@ -88,17 +88,43 @@ def run_claude(
     if max_budget_usd > 0:
         cmd.extend(["--max-budget-usd", str(max_budget_usd)])
 
-    result = subprocess.run(
-        cmd,
-        input=user_prompt,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        cwd=cwd,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            input=user_prompt,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=cwd,
+        )
+    except subprocess.TimeoutExpired as exc:
+        partial = (exc.stderr or b"").decode("utf-8", errors="replace")[-500:]
+        suffix = f"; last stderr: {partial.strip()}" if partial.strip() else ""
+        raise ClaudeCLIError(
+            f"claude timed out after {timeout}s with model={model!r}{suffix}"
+        ) from exc
     if result.returncode != 0:
         raise ClaudeCLIError(
             f"claude exited with code {result.returncode}: "
             f"{result.stderr[:500]}"
         )
     return result.stdout.strip() if result.stdout else ""
+
+
+def preflight_claude(model: str, *, timeout: int = 30) -> None:
+    """Cheap liveness check for the `claude` CLI + model combo.
+
+    Runs a zero-tool prompt with a short timeout to surface auth and
+    model-routing failures (e.g. a Bedrock ARN without the matching
+    env vars) in seconds instead of waiting for the real review to
+    blow the main timeout. Raises ``ClaudeCLIError`` on any failure;
+    succeeds silently.
+    """
+    run_claude(
+        "Reply with the single word: ok",
+        "You are a liveness check. Reply with the single word 'ok'.",
+        model=model,
+        disable_tools=True,
+        max_budget_usd=0.25,
+        timeout=timeout,
+    )
