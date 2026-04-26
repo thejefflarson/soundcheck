@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _claude_cli import ClaudeCLIError, run_claude  # noqa: E402
+from _claude_cli import ClaudeCLIError, preflight_claude, run_claude  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).parent
 SKILLS_DIR = SCRIPT_DIR.parent / ".claude" / "skills"
@@ -310,6 +310,25 @@ def main() -> int:
 
     print(f"Running security review on {repo_dir} ({mode}) "
           f"model={args.model} budget=${args.max_budget_usd}...")
+
+    # Cheap liveness check before the real run. Catches misconfigured
+    # third-party providers (Bedrock/Vertex inference profiles without
+    # the matching env vars, etc.) in seconds instead of after the full
+    # timeout with no visible output. See issue #10.
+    try:
+        preflight_claude(args.model)
+    except ClaudeCLIError as exc:
+        print(
+            f"ERROR: claude preflight failed for model={args.model!r}: "
+            f"{exc}\n"
+            "Hint: soundcheck shells out to `claude -p --model <X>`, so "
+            "--model accepts whatever the claude CLI accepts. For "
+            "Bedrock/Vertex set CLAUDE_CODE_USE_BEDROCK=1 (or "
+            "CLAUDE_CODE_USE_VERTEX=1) and the matching provider "
+            "credentials in your environment.",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         response = run_claude(

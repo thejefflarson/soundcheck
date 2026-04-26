@@ -60,6 +60,38 @@ Full-repo scan (sonnet recommended, ~10 min, ~$4):
 python scripts/security-review-action.py --repo-dir . --full-repo --model sonnet
 ```
 
+On a medium-to-large monorepo, `--full-repo` pushes a single review call past
+typical per-request limits. Start with `--diff-base main` (or point
+`--repo-dir` at a subdirectory) before attempting a whole-repo sweep.
+
+### Non-Anthropic providers (Bedrock, Vertex)
+
+Soundcheck shells out to `claude -p --model <X>`, so whatever model string
+the `claude` CLI accepts, Soundcheck accepts. For AWS Bedrock or Google
+Vertex, the model argument alone isn't enough — the CLI needs
+provider-selection env vars before it will route the call correctly:
+
+```bash
+# Bedrock
+export CLAUDE_CODE_USE_BEDROCK=1
+export AWS_REGION=us-east-1
+# plus AWS credentials (SSO, IAM role, or access keys)
+
+python scripts/security-review-action.py --repo-dir . --diff-base main \
+  --model arn:aws:bedrock:us-east-1:...:application-inference-profile/...
+```
+
+```bash
+# Vertex
+export CLAUDE_CODE_USE_VERTEX=1
+export CLOUD_ML_REGION=us-east5
+export ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project
+```
+
+Without those env vars, `claude -p --model <ARN>` will hang or silently fail
+and Soundcheck will surface a timeout. The script runs a short preflight
+call before the real review to catch this class of misconfiguration fast.
+
 ---
 
 ## Install
