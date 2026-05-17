@@ -104,9 +104,14 @@ def run_claude(
             f"claude timed out after {timeout}s with model={model!r}{suffix}"
         ) from exc
     if result.returncode != 0:
+        # claude -p often writes its actual error to stdout (the response
+        # stream), not stderr — drop stdout into the message too when
+        # stderr is empty, otherwise diagnosing CI failures is impossible.
+        stderr_tail = (result.stderr or "").strip()
+        stdout_tail = (result.stdout or "").strip()
+        diag = stderr_tail or stdout_tail or "(no output)"
         raise ClaudeCLIError(
-            f"claude exited with code {result.returncode}: "
-            f"{result.stderr[:500]}"
+            f"claude exited with code {result.returncode}: {diag[:1000]}"
         )
     return result.stdout.strip() if result.stdout else ""
 
