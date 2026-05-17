@@ -224,6 +224,7 @@ def claude_call(
     timeout: int = 900,
     allowed_tools: str | None = None,
     plugin_dir: Path | None = None,
+    max_budget_usd: float = 1.0,
 ) -> str:
     return run_claude(
         user_prompt,
@@ -234,6 +235,7 @@ def claude_call(
         disable_tools=(cwd is None and allowed_tools is None),
         timeout=timeout,
         plugin_dir=plugin_dir,
+        max_budget_usd=max_budget_usd,
     )
 
 
@@ -310,13 +312,25 @@ def run_review(
     # soundcheck checkout to make them discoverable.
     allowed_tools = "Agent" if skill_name == "security-review" else None
     plugin_dir = ROOT if skill_name == "security-review" else None
+    # The orchestrator fans out into 5+ subagent calls (one threat-model,
+    # one hotspot map, 1b + N audit chunks, one attack-chain pass). All of
+    # those bill against the same --max-budget-usd envelope, so the $1
+    # default is far too tight; bump to $10 for security-review and stretch
+    # the timeout to 40 minutes to give the pipeline room.
+    if skill_name == "security-review":
+        max_budget_usd = 10.0
+        timeout = 2400
+    else:
+        max_budget_usd = 1.0
+        timeout = 1200
     print(f"  Running review: {skill_name} ({model}) in {repo_dir.name}...",
           end=" ", flush=True)
     start = time.perf_counter()
     response = claude_call(
-        user_prompt, skill_content, model=model, cwd=repo_dir, timeout=1200,
+        user_prompt, skill_content, model=model, cwd=repo_dir, timeout=timeout,
         allowed_tools=allowed_tools,
         plugin_dir=plugin_dir,
+        max_budget_usd=max_budget_usd,
     )
     elapsed = time.perf_counter() - start
     print(f"done ({fmt_duration(elapsed)})")
