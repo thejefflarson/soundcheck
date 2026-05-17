@@ -21,9 +21,9 @@ applies the per-category skills (`injection`, `csrf`, `ssrf`, …).
 Use the **Agent** tool. **Main loop ONLY dispatches Agent calls and
 merges JSON — never Read/Grep/Glob/Bash in main context.**
 
-The five stage prompts live in `.claude/agents/`: `threat-modeling`,
-`hotspot-mapping`, `design-review`, `vulnerability-audit`,
-`attack-chain-analysis`. Each agent file carries its full system
+The five stage prompts live in `agents/` at the plugin root:
+`threat-modeling`, `hotspot-mapping`, `design-review`,
+`vulnerability-audit`, `attack-chain-analysis`. Each agent file carries its full system
 prompt, finding-style rules, and anti-injection guard. This skill is
 just the coordinator.
 

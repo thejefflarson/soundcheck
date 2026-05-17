@@ -94,13 +94,13 @@ and in the References section.
 ## Updating the Security Review Skill
 
 `.claude/skills/security-review/SKILL.md` is a thin orchestrator that dispatches
-five subagents in `.claude/agents/`. The skill body names a **Skill catalog** —
+five subagents in `agents/`. The skill body names a **Skill catalog** —
 the set of per-category skill names auditors may emit. The catalog actually
-lives in `.claude/agents/hotspot-mapping.md` (the subagent that assigns each
+lives in `agents/hotspot-mapping.md` (the subagent that assigns each
 hotspot a skill). **When adding a new skill, add its name to that catalog
 list.** Hotspots that name a non-catalog skill are silently dropped.
 
-## Subagents (`.claude/agents/`)
+## Subagents (`agents/`)
 
 The `/security-review` pipeline is split across five subagents per
 [Claude Code subagent best practices](https://code.claude.com/docs/en/sub-agents):
@@ -113,7 +113,7 @@ The `/security-review` pipeline is split across five subagents per
 - `attack-chain-analysis` — composes findings into chains (Stage 3).
 
 **Reload caveat:** subagents are loaded at Claude Code session start. Editing a
-file in `.claude/agents/` requires a full session restart — `/reload-plugins`
+file in `agents/` requires a full session restart — `/reload-plugins`
 alone does not pick up agent changes. Skill edits, by contrast, are read on
 demand when the skill is invoked.
 

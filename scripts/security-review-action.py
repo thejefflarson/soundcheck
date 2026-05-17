@@ -270,6 +270,14 @@ def main() -> int:
     system_prompt = skill_path.read_text(encoding="utf-8")
     skill_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
 
+    # The orchestrator dispatches named subagents (`threat-modeling`,
+    # `hotspot-mapping`, …) that live at <soundcheck>/agents/. When cwd
+    # is a third-party repo, those aren't discoverable, so we pass
+    # --plugin-dir pointing at the soundcheck checkout. Derived from
+    # the skill path: .../<plugin>/.claude/skills/<name>/SKILL.md
+    # → <plugin> is four parents up.
+    plugin_dir = skill_path.parent.parent.parent.parent
+
     changed: list[str] = []
     if args.diff_base:
         changed = get_changed_files(repo_dir, args.diff_base)
@@ -340,6 +348,7 @@ def main() -> int:
             allowed_tools="Read,Grep,Glob,Agent",
             max_budget_usd=args.max_budget_usd,
             timeout=args.timeout,
+            plugin_dir=plugin_dir,
         )
     except ClaudeCLIError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

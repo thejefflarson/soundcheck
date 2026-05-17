@@ -223,6 +223,7 @@ def claude_call(
     cwd: Path | None = None,
     timeout: int = 900,
     allowed_tools: str | None = None,
+    plugin_dir: Path | None = None,
 ) -> str:
     return run_claude(
         user_prompt,
@@ -232,6 +233,7 @@ def claude_call(
         allowed_tools=allowed_tools,
         disable_tools=(cwd is None and allowed_tools is None),
         timeout=timeout,
+        plugin_dir=plugin_dir,
     )
 
 
@@ -296,17 +298,25 @@ def run_review(
         repo_id=repo_info["id"], lang=repo_info["lang"],
     )
     # security-review is a subagent-orchestration skill — lock the main
-    # loop to just Task so it cannot do inline Read/Grep/Bash. Subagents
+    # loop to just Agent so it cannot do inline Read/Grep/Bash. Subagents
     # get the default toolset and do the actual work. hotspots and
     # threat-model do their analysis inline, so they need the default
     # toolset on the main process.
-    allowed_tools = "Task" if skill_name == "security-review" else None
+    #
+    # The orchestrator dispatches named subagents (threat-modeling,
+    # hotspot-mapping, design-review, vulnerability-audit,
+    # attack-chain-analysis). Those live at <soundcheck>/agents/ but cwd
+    # is the target repo, so we pass --plugin-dir pointing at the
+    # soundcheck checkout to make them discoverable.
+    allowed_tools = "Agent" if skill_name == "security-review" else None
+    plugin_dir = ROOT if skill_name == "security-review" else None
     print(f"  Running review: {skill_name} ({model}) in {repo_dir.name}...",
           end=" ", flush=True)
     start = time.perf_counter()
     response = claude_call(
         user_prompt, skill_content, model=model, cwd=repo_dir, timeout=1200,
         allowed_tools=allowed_tools,
+        plugin_dir=plugin_dir,
     )
     elapsed = time.perf_counter() - start
     print(f"done ({fmt_duration(elapsed)})")

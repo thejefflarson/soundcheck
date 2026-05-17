@@ -42,6 +42,7 @@ def run_claude(
     append_system_prompt: str | None = None,
     max_budget_usd: float = 1.0,
     timeout: int = 900,
+    plugin_dir: Path | str | None = None,
 ) -> str:
     """Shell out to `claude -p` and return stdout.
 
@@ -87,6 +88,8 @@ def run_claude(
         cmd.extend(["--allowed-tools", allowed_tools])
     if max_budget_usd > 0:
         cmd.extend(["--max-budget-usd", str(max_budget_usd)])
+    if plugin_dir is not None:
+        cmd.extend(["--plugin-dir", str(plugin_dir)])
 
     try:
         result = subprocess.run(
