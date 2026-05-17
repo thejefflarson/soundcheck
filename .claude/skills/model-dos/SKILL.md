@@ -1,8 +1,10 @@
 ---
 name: model-dos
-description: Use when writing LLM API call handlers, setting up inference endpoints,
-  implementing chatbot backends, or configuring token limits for LLM services. Also
-  invoke when accepting user-provided prompts without length constraints.
+description: Detects LLM endpoints missing token caps, rate limits, or prompt-length
+  bounds, enabling cost and resource exhaustion. Use when writing LLM API call
+  handlers, setting up inference endpoints, implementing chatbot backends, or
+  configuring token limits for LLM services. Also invoke when accepting user-
+  provided prompts without length constraints.
 ---
 
 # Model Denial of Service Security Check (OWASP LLM04:2025)

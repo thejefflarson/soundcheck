@@ -1,8 +1,10 @@
 ---
 name: injection
-description: Use when writing code that constructs database queries, builds SQL strings,
-  executes shell commands, processes templates with user input, evaluates code dynamically,
-  or passes user-controlled data to any external interpreter.
+description: Detects SQL, command, and template injection caused by user input reaching an
+  interpreter without parameterization. Use when writing code that constructs
+  database queries, builds SQL strings, executes shell commands, processes
+  templates with user input, evaluates code dynamically, or passes user-
+  controlled data to any external interpreter.
 ---
 
 # Injection Security Check (A05:2025)

@@ -1,8 +1,10 @@
 ---
 name: hotspots
-description: Use when the user asks to identify security-sensitive areas in a codebase,
-  map the attack surface, or find where a security review should focus. Also invoke
-  when asked to triage or prioritize security effort across a repository.
+description: Maps security-sensitive code locations in a codebase to focus review effort.
+  Use when the user asks to identify security-sensitive areas in a codebase,
+  map the attack surface, or find where a security review should focus. Also
+  invoke when asked to triage or prioritize security effort across a
+  repository.
 ---
 
 # Security Hotspot Analysis (A06:2025)

@@ -1,8 +1,10 @@
 ---
 name: mcp-security
-description: Use when writing MCP server definitions, tool schemas, or tool handler
-  code. Also invoke when registering tools with Claude or building Claude Code extensions
-  that expose file system, shell, or network access.
+description: Detects MCP tool handlers vulnerable to malicious inputs, hardcoded secrets,
+  or unrestricted file/shell access. Use when writing MCP server definitions,
+  tool schemas, or tool handler code. Also invoke when registering tools with
+  Claude or building Claude Code extensions that expose file system, shell, or
+  network access.
 ---
 
 # MCP Server Security (OWASP LLM07:2025)

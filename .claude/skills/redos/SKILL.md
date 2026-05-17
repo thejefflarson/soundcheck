@@ -1,8 +1,10 @@
 ---
 name: redos
-description: Use when writing regular expressions that will be applied to user-supplied
-  input. Also invoke when compiling regexes from external configuration, building input
-  validation patterns, or parsing untrusted strings with regex.
+description: Detects regex patterns vulnerable to catastrophic backtracking on crafted
+  inputs. Use when writing regular expressions that will be applied to user-
+  supplied input. Also invoke when compiling regexes from external
+  configuration, building input validation patterns, or parsing untrusted
+  strings with regex.
 ---
 
 # ReDoS Security Check (CWE-1333)

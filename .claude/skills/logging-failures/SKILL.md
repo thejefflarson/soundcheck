@@ -1,9 +1,10 @@
 ---
 name: logging-failures
-description: Use when writing logging code, audit trails, error handlers that log,
-  authentication event recording, or any code that writes security-relevant events.
-  Also invoke when logging user inputs, API responses, or system actions that touch
-  sensitive data.
+description: Detects missing security event logs, logged secrets, and log injection through
+  user input. Use when writing logging code, audit trails, error handlers that
+  log, authentication event recording, or any code that writes security-
+  relevant events. Also invoke when logging user inputs, API responses, or
+  system actions that touch sensitive data.
 ---
 
 # Security Logging and Monitoring Failures Security Check (A09:2025)

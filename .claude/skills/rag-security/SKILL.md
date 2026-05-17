@@ -1,8 +1,10 @@
 ---
 name: rag-security
-description: Use when building RAG pipelines, ingesting external documents into vector
-  stores, or retrieving content from external sources to include in LLM context. Also
-  invoke when writing code that fetches URLs or parses documents for LLM prompts.
+description: Detects RAG pipelines that ingest external documents into LLM context without
+  sanitization or trust gating. Use when building RAG pipelines, ingesting
+  external documents into vector stores, or retrieving content from external
+  sources to include in LLM context. Also invoke when writing code that
+  fetches URLs or parses documents for LLM prompts.
 ---
 
 # RAG Pipeline Security (OWASP LLM01:2025)

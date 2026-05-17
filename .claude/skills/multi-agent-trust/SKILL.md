@@ -1,8 +1,10 @@
 ---
 name: multi-agent-trust
-description: Use when writing code that calls other agents, spawns subagents, builds
-  multi-agent pipelines, or passes messages between LLM agents. Also invoke when an
-  orchestrator delegates tasks to worker agents or when agents share tools and permissions.
+description: Detects agent-to-agent calls without authentication, authorization, or
+  permission scoping. Use when writing code that calls other agents, spawns
+  subagents, builds multi-agent pipelines, or passes messages between LLM
+  agents. Also invoke when an orchestrator delegates tasks to worker agents or
+  when agents share tools and permissions.
 ---
 
 # Multi-Agent Trust Boundaries (LLM08:2025)

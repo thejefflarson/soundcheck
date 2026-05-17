@@ -1,8 +1,10 @@
 ---
 name: cryptographic-failures
-description: Use when writing code that encrypts or decrypts data, hashes passwords
-  or tokens, generates random values for security purposes, manages cryptographic
-  keys, or configures TLS/SSL settings. Also invoke when storing sensitive data at rest.
+description: Detects weak or broken cryptography that lets attackers recover plaintext
+  passwords, forge tokens, or decrypt sensitive data. Use when writing code
+  that encrypts or decrypts data, hashes passwords or tokens, generates random
+  values for security purposes, manages cryptographic keys, or configures
+  TLS/SSL settings. Also invoke when storing sensitive data at rest.
 ---
 
 # Cryptographic Failures Security Check (A04:2025)

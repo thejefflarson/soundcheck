@@ -1,8 +1,10 @@
 ---
 name: race-condition
-description: Use when writing check-then-act sequences on shared state, file operations
-  that check existence before read/write, balance updates without locking, or any code
-  where two operations on the same resource are not atomic.
+description: Detects check-then-act sequences on shared state vulnerable to TOCTOU
+  manipulation. Use when writing check-then-act sequences on shared state,
+  file operations that check existence before read/write, balance updates
+  without locking, or any code where two operations on the same resource are
+  not atomic.
 ---
 
 # Race Condition Security Check (CWE-362)

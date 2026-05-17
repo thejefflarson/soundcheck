@@ -1,9 +1,10 @@
 ---
 name: header-injection
-description: Use when writing code that sets HTTP response headers using values from
-  user input, request parameters, or external data. Also invoke when constructing
-  email headers, Content-Disposition filenames, or Location headers from caller-controlled
-  strings.
+description: Detects HTTP response header construction from user input vulnerable to CRLF
+  injection. Use when writing code that sets HTTP response headers using
+  values from user input, request parameters, or external data. Also invoke
+  when constructing email headers, Content-Disposition filenames, or Location
+  headers from caller-controlled strings.
 ---
 
 # HTTP Header Injection Security Check (CWE-113)

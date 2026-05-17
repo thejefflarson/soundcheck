@@ -1,8 +1,9 @@
 ---
 name: model-theft
-description: Use when writing inference API endpoints, deploying LLM-serving infrastructure,
-  implementing model access controls, or configuring rate limiting and authentication
-  for model endpoints.
+description: Detects inference endpoints without authentication or throttling, allowing
+  model weight reconstruction. Use when writing inference API endpoints,
+  deploying LLM-serving infrastructure, implementing model access controls, or
+  configuring rate limiting and authentication for model endpoints.
 ---
 
 # Model Theft (OWASP LLM10:2025)

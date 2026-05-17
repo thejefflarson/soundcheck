@@ -1,8 +1,9 @@
 ---
 name: exceptional-conditions
-description: Use when writing error handlers, exception catching blocks, try/catch/finally
-  constructs, or API error responses. Also invoke when an application could fail open
-  on exception, or when stack traces might reach end users.
+description: Detects error handlers that leak stack traces or fail open on exception. Use
+  when writing error handlers, exception catching blocks, try/catch/finally
+  constructs, or API error responses. Also invoke when an application could
+  fail open on exception, or when stack traces might reach end users.
 ---
 
 # Exceptional Conditions Security Check (A05:2025)

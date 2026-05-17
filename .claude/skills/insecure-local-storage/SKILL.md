@@ -1,8 +1,10 @@
 ---
 name: insecure-local-storage
-description: Use when writing code that stores sensitive data (credentials, tokens, PII)
-  to local files, platform preference stores (NSUserDefaults, SharedPreferences,
-  UserDefaults), SQLite databases, or localStorage without encryption at rest.
+description: Detects sensitive data written to unprotected local files, preference stores,
+  or SQLite. Use when writing code that stores sensitive data (credentials,
+  tokens, PII) to local files, platform preference stores (NSUserDefaults,
+  SharedPreferences, UserDefaults), SQLite databases, or localStorage without
+  encryption at rest.
 ---
 
 # Insecure Local Data Storage (A02:2025)

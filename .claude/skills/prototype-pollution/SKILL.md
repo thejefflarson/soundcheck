@@ -1,8 +1,10 @@
 ---
 name: prototype-pollution
-description: Use when writing JavaScript or TypeScript code that deep-merges, clones,
-  or extends objects using user-controlled input. Also invoke when using lodash merge/set,
-  Object.assign with dynamic keys, or recursive property copy on untrusted data.
+description: Detects JavaScript deep-merges or property assignment from user input that can
+  pollute Object.prototype. Use when writing JavaScript or TypeScript code
+  that deep-merges, clones, or extends objects using user-controlled input.
+  Also invoke when using lodash merge/set, Object.assign with dynamic keys, or
+  recursive property copy on untrusted data.
 ---
 
 # Prototype Pollution Security Check (CWE-1321)

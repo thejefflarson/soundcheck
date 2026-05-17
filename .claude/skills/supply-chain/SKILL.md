@@ -1,8 +1,10 @@
 ---
 name: supply-chain
-description: Use when writing package installation commands, dependency manifests,
-  CI/CD pipeline configs, build scripts, or code that loads external packages. Also
-  invoke when pinning or unpinning dependency versions.
+description: Detects unpinned dependencies, unverified package installs, and missing
+  integrity checks in build pipelines. Use when writing package installation
+  commands, dependency manifests, CI/CD pipeline configs, build scripts, or
+  code that loads external packages. Also invoke when pinning or unpinning
+  dependency versions.
 ---
 
 # Supply Chain Security Check (A03:2025)

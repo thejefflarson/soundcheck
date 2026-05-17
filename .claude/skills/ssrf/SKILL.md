@@ -1,9 +1,10 @@
 ---
 name: ssrf
-description: Use when writing code that makes HTTP requests to URLs constructed from
-  user input, fetches resources from caller-specified addresses, or proxies requests
-  on behalf of users. Also invoke when implementing webhook receivers or URL preview
-  features.
+description: Detects HTTP requests to user-controlled URLs that can reach internal services
+  or cloud metadata endpoints. Use when writing code that makes HTTP requests
+  to URLs constructed from user input, fetches resources from caller-specified
+  addresses, or proxies requests on behalf of users. Also invoke when
+  implementing webhook receivers or URL preview features.
 ---
 
 # SSRF Security Check (A10:2025 / API7:2023)

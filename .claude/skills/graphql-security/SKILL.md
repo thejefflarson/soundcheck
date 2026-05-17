@@ -1,8 +1,10 @@
 ---
 name: graphql-security
-description: Use when writing GraphQL schemas, resolvers, or server configuration. Also
-  invoke when setting up Apollo Server, graphql-yoga, Strawberry, gqlgen, or any GraphQL
-  framework without explicit depth limiting, cost analysis, or introspection controls.
+description: Detects GraphQL schemas without depth limits, cost analysis, or introspection
+  controls. Use when writing GraphQL schemas, resolvers, or server
+  configuration. Also invoke when setting up Apollo Server, graphql-yoga,
+  Strawberry, gqlgen, or any GraphQL framework without explicit depth
+  limiting, cost analysis, or introspection controls.
 ---
 
 # GraphQL Security Check (CWE-400)

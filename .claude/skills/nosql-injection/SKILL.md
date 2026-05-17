@@ -1,9 +1,10 @@
 ---
 name: nosql-injection
-description: Use when writing MongoDB queries, Elasticsearch queries, or other NoSQL
-  database operations that include user-supplied input. Also invoke when building
-  query filters from request parameters or constructing aggregation pipelines with
-  dynamic values.
+description: Detects MongoDB and other NoSQL queries that mix user input into operators or
+  filters without validation. Use when writing MongoDB queries, Elasticsearch
+  queries, or other NoSQL database operations that include user-supplied
+  input. Also invoke when building query filters from request parameters or
+  constructing aggregation pipelines with dynamic values.
 ---
 
 # NoSQL Injection Security Check (CWE-943)

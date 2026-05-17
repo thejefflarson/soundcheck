@@ -1,8 +1,9 @@
 ---
 name: open-redirect
-description: Use when writing code that redirects users to a URL from request parameters,
-  form input, or any caller-controlled source. Also invoke when building login flows
-  with "return to" URLs or OAuth callback redirects.
+description: Detects redirects to user-controlled URLs that enable phishing and OAuth
+  callback abuse. Use when writing code that redirects users to a URL from
+  request parameters, form input, or any caller-controlled source. Also invoke
+  when building login flows with "return to" URLs or OAuth callback redirects.
 ---
 
 # Open Redirect Security Check (CWE-601)

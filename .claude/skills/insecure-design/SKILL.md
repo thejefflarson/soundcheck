@@ -1,8 +1,10 @@
 ---
 name: insecure-design
-description: Use when designing authentication flows, implementing rate limiting, building
-  business logic for financial or access-sensitive operations, or writing code that enforces
-  security requirements at the application layer.
+description: Detects missing security controls — rate limits, MFA, re-auth — that should
+  have been designed in from the start. Use when designing authentication
+  flows, implementing rate limiting, building business logic for financial or
+  access-sensitive operations, or writing code that enforces security
+  requirements at the application layer.
 ---
 
 # Insecure Design Security Check (A06:2025)

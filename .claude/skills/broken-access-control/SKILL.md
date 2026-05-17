@@ -1,8 +1,10 @@
 ---
 name: broken-access-control
-description: Use when writing code that checks authorization, enforces resource ownership,
-  handles IDOR (object-level authorization), processes server-side requests to external
-  URLs, or implements access control middleware.
+description: Detects missing ownership checks, broken role enforcement, and IDOR
+  vulnerabilities that let users access other users' resources. Use when
+  writing code that checks authorization, enforces resource ownership, handles
+  IDOR (object-level authorization), processes server-side requests to
+  external URLs, or implements access control middleware.
 ---
 
 # Broken Access Control Security Check (A01:2025)

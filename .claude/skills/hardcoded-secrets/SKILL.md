@@ -1,9 +1,10 @@
 ---
 name: hardcoded-secrets
-description: Use when writing code that contains API keys, passwords, tokens, connection
-  strings, or private keys as string literals. Also invoke when embedding credentials
-  in configuration files, environment setup scripts, or test fixtures that could be
-  committed to version control.
+description: Detects API keys, passwords, tokens, and credentials embedded directly in
+  source code. Use when writing code that contains API keys, passwords,
+  tokens, connection strings, or private keys as string literals. Also invoke
+  when embedding credentials in configuration files, environment setup
+  scripts, or test fixtures that could be committed to version control.
 ---
 
 # Hardcoded Secrets Security Check (CWE-798)

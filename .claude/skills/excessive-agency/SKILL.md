@@ -1,9 +1,10 @@
 ---
 name: excessive-agency
-description: Use when building autonomous LLM agents, implementing multi-step agent
-  pipelines, writing code where LLM output triggers real-world actions (file writes,
-  API calls, emails, database changes, code execution), or designing agentic workflows
-  with tool use.
+description: Detects autonomous agents that take irreversible or high-impact actions
+  without human approval. Use when building autonomous LLM agents,
+  implementing multi-step agent pipelines, writing code where LLM output
+  triggers real-world actions (file writes, API calls, emails, database
+  changes, code execution), or designing agentic workflows with tool use.
 ---
 
 # Excessive Agency (OWASP LLM08:2025)

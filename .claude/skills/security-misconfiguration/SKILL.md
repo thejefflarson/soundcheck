@@ -1,8 +1,10 @@
 ---
 name: security-misconfiguration
-description: Use when writing server configuration, setting environment variables,
-  configuring CORS policies, enabling debug modes, setting up default credentials,
-  or deploying application infrastructure. Also invoke when writing security headers middleware.
+description: Detects insecure defaults, overly permissive CORS, exposed debug endpoints,
+  and missing security headers. Use when writing server configuration, setting
+  environment variables, configuring CORS policies, enabling debug modes,
+  setting up default credentials, or deploying application infrastructure.
+  Also invoke when writing security headers middleware.
 ---
 
 # Security Misconfiguration Security Check (A02:2025)

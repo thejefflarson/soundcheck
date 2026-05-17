@@ -1,9 +1,10 @@
 ---
 name: training-data-poisoning
-description: Use when writing fine-tuning pipelines, dataset ingestion scripts, external
-  training data loaders, or code that collects and processes data for model training.
-  Also invoke when automating dataset curation from web scraping or user-contributed
-  sources.
+description: Detects training and fine-tuning pipelines that ingest external data without
+  integrity gating. Use when writing fine-tuning pipelines, dataset ingestion
+  scripts, external training data loaders, or code that collects and processes
+  data for model training. Also invoke when automating dataset curation from
+  web scraping or user-contributed sources.
 ---
 
 # Training Data Poisoning Security Check (OWASP LLM03:2025)

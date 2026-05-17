@@ -1,8 +1,9 @@
 ---
 name: csrf
-description: Use when writing HTML forms that submit POST/PUT/DELETE requests, configuring
-  session cookies, or setting up CSRF middleware for web applications. Also invoke when
-  disabling or bypassing CSRF protections in framework configuration.
+description: Detects forms and state-changing endpoints missing CSRF protection. Use when
+  writing HTML forms that submit POST/PUT/DELETE requests, configuring session
+  cookies, or setting up CSRF middleware for web applications. Also invoke
+  when disabling or bypassing CSRF protections in framework configuration.
 ---
 
 # Cross-Site Request Forgery Check (A01:2025)

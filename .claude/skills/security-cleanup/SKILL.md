@@ -1,7 +1,8 @@
 ---
 name: security-cleanup
-description: Use when the user wants to fix security issues found by /security-review
-  or when they ask to clean up, remediate, or apply fixes for security findings.
+description: Applies fixes for security findings produced by /security-review. Use when the
+  user wants to fix security issues found by /security-review or when they ask
+  to clean up, remediate, or apply fixes for security findings.
 ---
 
 # Security Cleanup (A01:2025–A10:2025 + LLM01:2025–LLM10:2025)

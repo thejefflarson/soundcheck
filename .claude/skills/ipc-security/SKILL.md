@@ -1,8 +1,10 @@
 ---
 name: ipc-security
-description: Use when writing URL scheme handlers, Android intent receivers or exported
-  activities, named pipe or socket listeners, XPC service handlers, or any IPC endpoint
-  that processes caller-supplied input without validating the caller's identity or origin.
+description: Detects IPC receivers that accept input without verifying caller identity. Use
+  when writing URL scheme handlers, Android intent receivers or exported
+  activities, named pipe or socket listeners, XPC service handlers, or any IPC
+  endpoint that processes caller-supplied input without validating the
+  caller's identity or origin.
 ---
 
 # IPC Security (A01:2025)

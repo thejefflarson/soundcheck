@@ -1,8 +1,10 @@
 ---
 name: file-upload
-description: Use when writing file upload handlers, processing multipart form data,
-  saving uploaded files to disk or cloud storage. Also invoke when accepting user-supplied
-  filenames or storing uploads in a web-accessible directory.
+description: Detects file upload handlers that accept executable content or write to web-
+  accessible paths without validation. Use when writing file upload handlers,
+  processing multipart form data, saving uploaded files to disk or cloud
+  storage. Also invoke when accepting user-supplied filenames or storing
+  uploads in a web-accessible directory.
 ---
 
 # File Upload Security Check (A04:2025)

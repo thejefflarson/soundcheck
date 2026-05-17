@@ -1,8 +1,10 @@
 ---
 name: token-smuggling
-description: Use when writing code that passes user-supplied strings to an LLM,
-  constructs prompts from external data, or processes text that may contain Unicode
-  control characters, homoglyphs, or invisible formatting characters.
+description: Detects user input passed to LLMs without Unicode normalization, allowing RTL
+  overrides, zero-width joiners, and homoglyph attacks. Use when writing code
+  that passes user-supplied strings to an LLM, constructs prompts from
+  external data, or processes text that may contain Unicode control
+  characters, homoglyphs, or invisible formatting characters.
 ---
 
 # Token Smuggling / Unicode Injection (LLM01:2025)

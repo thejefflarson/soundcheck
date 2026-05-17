@@ -1,9 +1,10 @@
 ---
 name: unsafe-api-consumption
-description: Use when writing code that calls third-party APIs, parses responses from
-  external services, or integrates with webhooks and callbacks from external systems.
-  Also invoke when deserializing or acting on data received from partner or vendor APIs
-  without validation.
+description: Detects code that consumes third-party API responses without type validation
+  or sanitization. Use when writing code that calls third-party APIs, parses
+  responses from external services, or integrates with webhooks and callbacks
+  from external systems. Also invoke when deserializing or acting on data
+  received from partner or vendor APIs without validation.
 ---
 
 # Unsafe API Consumption Check (API10:2023)

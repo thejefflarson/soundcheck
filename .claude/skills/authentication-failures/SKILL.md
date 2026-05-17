@@ -1,8 +1,11 @@
 ---
 name: authentication-failures
-description: Use when writing login flows, session management, password storage, JWT
-  handling, MFA implementation, credential validation, or any code that authenticates
-  users. Also invoke when implementing "remember me" functionality or API key management.
+description: Detects weak password storage, flawed JWT validation, sessions surviving
+  logout, and missing MFA in authentication code. Use when writing login
+  flows, session management, password storage, JWT handling, MFA
+  implementation, credential validation, or any code that authenticates users.
+  Also invoke when implementing "remember me" functionality or API key
+  management.
 ---
 
 # Authentication Failures Security Check (A07:2025)

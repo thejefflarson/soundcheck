@@ -1,9 +1,10 @@
 ---
 name: mass-assignment
-description: Use when writing code that creates or updates database records from request
-  body, form data, or JSON input. Also invoke when spreading, merging, or destructuring
-  request payloads directly into ORM model create/update calls without an explicit
-  field allowlist.
+description: Detects ORM create/update calls that spread request bodies without an explicit
+  field allowlist. Use when writing code that creates or updates database
+  records from request body, form data, or JSON input. Also invoke when
+  spreading, merging, or destructuring request payloads directly into ORM
+  model create/update calls without an explicit field allowlist.
 ---
 
 # Mass Assignment Check (API3:2023)

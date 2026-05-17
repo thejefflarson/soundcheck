@@ -1,9 +1,10 @@
 ---
 name: threat-model
-description: Use when writing an implementation plan for a new feature, API endpoint,
-  data pipeline, or system component. Also invoke when a plan introduces new trust
-  boundaries, handles user-supplied data, adds authentication flows, or integrates
-  external services.
+description: Surfaces missing security controls before implementation by applying a threat-
+  modeling checklist to a plan. Use when writing an implementation plan for a
+  new feature, API endpoint, data pipeline, or system component. Also invoke
+  when a plan introduces new trust boundaries, handles user-supplied data,
+  adds authentication flows, or integrates external services.
 ---
 
 # Threat Modeling Check (A06:2025)

@@ -1,8 +1,10 @@
 ---
 name: path-traversal
-description: Use when writing code that opens, reads, writes, or deletes files using
-  paths constructed from user input. Also invoke when serving static files, handling
-  file downloads by name, or resolving paths from URL parameters or request bodies.
+description: Detects file operations with user-controlled paths vulnerable to ../
+  traversal, absolute paths, or symlink escapes. Use when writing code that
+  opens, reads, writes, or deletes files using paths constructed from user
+  input. Also invoke when serving static files, handling file downloads by
+  name, or resolving paths from URL parameters or request bodies.
 ---
 
 # Path Traversal Security Check (A01:2025)

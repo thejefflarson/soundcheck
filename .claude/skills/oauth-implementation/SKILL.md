@@ -1,8 +1,10 @@
 ---
 name: oauth-implementation
-description: Use when writing OAuth2 or OpenID Connect flows, JWT validation logic,
-  token endpoint handling, or redirect URI processing. Also invoke when implementing
-  any code that parses or verifies JWTs.
+description: Detects weak JWT validation, loose redirect_uri matching, and missing state
+  parameters in OAuth/OIDC flows. Use when writing OAuth2 or OpenID Connect
+  flows, JWT validation logic, token endpoint handling, or redirect URI
+  processing. Also invoke when implementing any code that parses or verifies
+  JWTs.
 ---
 
 # OAuth/OIDC Implementation Security (OWASP A07:2025)

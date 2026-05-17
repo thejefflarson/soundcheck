@@ -2,11 +2,14 @@
 
 ## What is Soundcheck?
 
-Soundcheck is a Claude Code plugin providing 39 auto-invoking security skills and one
-on-demand `/security-review` command, covering OWASP, CWE, and real-world vulnerability
-patterns, plus emerging threats tracked in `docs/threat-radar.md`. When Claude detects vulnerable code
-patterns, the relevant skill auto-invokes, rewrites the vulnerable code, explains the
-change, and continues with the original task — no user intervention required.
+Soundcheck is a Claude Code plugin providing 45 auto-invoking security skills, one
+on-demand `/security-review` command, and 5 subagents (`threat-modeling`,
+`hotspot-mapping`, `design-review`, `vulnerability-audit`,
+`attack-chain-analysis`) that the `/security-review` orchestrator dispatches. It
+covers OWASP, CWE, and real-world vulnerability patterns plus emerging threats
+tracked in `docs/threat-radar.md`. When Claude detects vulnerable code patterns,
+the relevant skill auto-invokes, flags the vulnerable code, explains the change,
+and continues with the original task — no user intervention required.
 
 Auto-invocation is driven entirely by the `description` frontmatter in each `SKILL.md`.
 No CLAUDE.md trigger mapping is needed — the description field IS the trigger.
@@ -46,15 +49,24 @@ fit is advice that won't be read.
 
 ### Description field (auto-invocation trigger)
 
-The `description` field in the frontmatter is what causes the skill to auto-invoke. Write
-it to match the **code Claude is about to write**, not attack theory. Good triggers:
+The `description` field in the frontmatter is what causes the skill to auto-invoke. Per
+the [official Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices),
+descriptions should include **both what the skill does and when to use it**, in third
+person. Format:
 
-- "Use when writing code that constructs database queries..."
-- "Use when building LLM API calls that include user-supplied content..."
+> *"[Third-person sentence describing what the skill detects/checks/audits]. Use when
+> writing [list of concrete code patterns]."*
 
-Bad triggers:
-- "Use when discussing SQL injection..."
-- "Use for security review..."
+Write the trigger to match the **code Claude is about to write**, not attack theory.
+
+Good:
+- "Detects SQL/shell/template injection sinks. Use when writing code that constructs database queries, builds SQL strings, executes shell commands..."
+- "Audits LLM API call sites for missing token caps, timeouts, and prompt-injection surfaces. Use when building LLM API calls that include user-supplied content..."
+
+Bad:
+- "Use when discussing SQL injection..." (no "what")
+- "Use for security review..." (vague)
+- "I can help you find SQL injection bugs..." (first person)
 
 Descriptions should be 2–3 sentences and specific enough to avoid false positives.
 
@@ -81,10 +93,33 @@ and in the References section.
 
 ## Updating the Security Review Skill
 
-`.claude/skills/security-review/SKILL.md` contains a list of every Soundcheck skill with a
-short description of what it covers. **When adding a new skill, add it to the list in
-the "Procedure" section of that file.** The skill will not be considered during
-`/security-review` sweeps otherwise.
+`.claude/skills/security-review/SKILL.md` is a thin orchestrator that dispatches
+five subagents in `.claude/agents/`. The skill body names a **Skill catalog** —
+the set of per-category skill names auditors may emit. The catalog actually
+lives in `.claude/agents/hotspot-mapping.md` (the subagent that assigns each
+hotspot a skill). **When adding a new skill, add its name to that catalog
+list.** Hotspots that name a non-catalog skill are silently dropped.
+
+## Subagents (`.claude/agents/`)
+
+The `/security-review` pipeline is split across five subagents per
+[Claude Code subagent best practices](https://code.claude.com/docs/en/sub-agents):
+
+- `threat-modeling` — builds a threat model JSON (Stage 0).
+- `hotspot-mapping` — finds security-sensitive code locations (Stage 1).
+- `design-review` — finds missing controls (Stage 1b, parallel with Stage 2).
+- `vulnerability-audit` — audits a ≤5-hotspot chunk against the named skill
+  (Stage 2, dispatched N×).
+- `attack-chain-analysis` — composes findings into chains (Stage 3).
+
+**Reload caveat:** subagents are loaded at Claude Code session start. Editing a
+file in `.claude/agents/` requires a full session restart — `/reload-plugins`
+alone does not pick up agent changes. Skill edits, by contrast, are read on
+demand when the skill is invoked.
+
+Plugin subagents silently ignore `hooks`, `mcpServers`, and `permissionMode`
+frontmatter fields (Anthropic doc), so don't use them in agent files shipped
+with Soundcheck.
 
 ## Testing Skills
 

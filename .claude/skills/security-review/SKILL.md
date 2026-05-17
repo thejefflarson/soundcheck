@@ -1,7 +1,8 @@
 ---
 name: security-review
-description: Use when the user types /security-review or explicitly requests a full
-  security audit of the current code.
+description: Runs a full OWASP/CWE security audit via isolated subagents. Use when the user
+  types /security-review or explicitly requests a full security audit of the
+  current code.
 ---
 
 # Full Security Audit (A01:2025–A10:2025 + LLM01:2025–LLM10:2025)
@@ -12,93 +13,71 @@ Full audit via isolated subagents. Main context shows only findings.
 
 ## Vulnerable patterns
 
-Delegates to subagents applying the Soundcheck skill suite.
+Delegates to the Soundcheck `vulnerability-audit` subagent, which
+applies the per-category skills (`injection`, `csrf`, `ssrf`, …).
 
 ## Procedure
 
-Use the **Agent** tool. **Main loop ONLY dispatches Agent calls and merges
-JSON — never Read/Grep/Glob/Bash in main context.**
+Use the **Agent** tool. **Main loop ONLY dispatches Agent calls and
+merges JSON — never Read/Grep/Glob/Bash in main context.**
 
-### Skill catalog (auditors must name one of these)
+The five stage prompts live in `.claude/agents/`: `threat-modeling`,
+`hotspot-mapping`, `design-review`, `vulnerability-audit`,
+`attack-chain-analysis`. Each agent file carries its full system
+prompt, finding-style rules, and anti-injection guard. This skill is
+just the coordinator.
 
-`injection`, `prompt-injection`, `insecure-output-handling`, `token-smuggling`,
-`authentication-failures`, `oauth-implementation`, `broken-access-control`,
-`integrity-failures`, `insecure-local-storage`, `cryptographic-failures`,
-`security-misconfiguration`, `supply-chain`, `rag-security`,
-`exceptional-conditions`, `logging-failures`, `ipc-security`,
-`sensitive-disclosure`, `model-theft`, `model-dos`, `mcp-security`,
-`excessive-agency`, `multi-agent-trust`, `overreliance`,
-`insecure-plugin-design`, `llm-supply-chain`, `insecure-design`,
-`mass-assignment`, `csrf`, `file-upload`, `ssrf`, `path-traversal`,
-`unsafe-api-consumption`, `redos`, `race-condition`, `open-redirect`,
-`prototype-pollution`, `hardcoded-secrets`, `graphql-security`,
-`nosql-injection`, `header-injection`.
+Copy this checklist and check off each item as you progress:
 
-### Stage 0 — Threat model (one subagent)
+```
+Pipeline progress:
+- [ ] Stage 0 — threat-modeling returned
+- [ ] Stage 1 — hotspot-mapping returned
+- [ ] Stages 1b+2 — design-review + N vulnerability-audit subagents dispatched in ONE message
+- [ ] Stages 1b+2 — all returned, merged, deduped by (file, line)
+- [ ] Stage 3 — attack-chain-analysis returned
+- [ ] Stage 4 — findings table rendered with severity legend
+- [ ] Stage 5 — suggested /security-cleanup to the user
+```
 
-Launch a `general-purpose` subagent:
+### Stage 0 — Threat model
 
-> "Read `CLAUDE.md`, `README.md`, top-level structure. Return ONLY JSON
-> `{purpose, deployment, trusted_inputs, untrusted_inputs, attack_surface,
-> out_of_scope}`. `out_of_scope` = finding categories to discount."
+Dispatch one `threat-modeling` subagent. It returns JSON describing
+purpose, deployment, trusted/untrusted inputs, attack surface, and
+out-of-scope. Thread this JSON into every later subagent.
 
-Thread `<threat_model>` into every later subagent.
+### Stage 1 — Hotspot map
 
-### Stage 1 — Hotspot map (one subagent)
+Dispatch one `hotspot-mapping` subagent with the threat model. It
+returns `[{category, skill, file, lines, what}, ...]`.
 
-Launch with skill catalog + threat model:
+### Stages 1b + 2 — Design review and vulnerability audit (parallel)
 
-> "Threat model: `<threat_model>`. Glob common source extensions; skip
-> `node_modules`, `.venv`, `dist`, `build`, `target`. Focus on
-> `attack_surface`. **Be exhaustive** — list every Critical/High
-> security-sensitive area you can find; do not self-limit. Assign each
-> a `skill`. Return ONLY `[{category, skill, file, lines, what}, ...]`."
+**In a SINGLE message**, dispatch:
 
-### Stage 1b — Design review (parallel with Stage 2)
+- One `design-review` subagent with the threat model.
+- One `vulnerability-audit` subagent per chunk of ≤5 hotspots. Every
+  hotspot must be in some chunk; serial launches defeat parallelism.
 
-Auditors pattern-match existing code; this stage finds *missing* controls
-(no timeout, no cost cap, prose-only guard):
+Concatenate every returned findings array. Dedupe by `(file, line)`.
 
-> "Threat model: `<threat_model>`. Read
-> `.claude/skills/threat-model/SKILL.md`; apply its checklist to every
-> file in `attack_surface`. For each missing control, emit
-> `{severity, file, line, skill, finding, fix}`. Use `insecure-design`
-> for generic gaps. `[]` if none."
+### Stage 3 — Attack-chain analysis
 
-Merge output with Stage 2's before Stage 3.
-
-### Stage 2 — Auditors (parallel subagents)
-
-Chunks of ≤5 hotspots. **Emit ALL auditor Agent calls in ONE message**
-(serial launches defeat the purpose — every hotspot must be covered by
-some chunk). Each gets:
-
-> "Threat model: `<threat_model>`. Audit hotspots `<chunk JSON>`. For
-> each, open the cited file and apply its named skill — read
-> `.claude/skills/<skill>/SKILL.md`, match against
-> `## Vulnerable patterns`. Include Critical/High/Medium/Low, but
-> discount `out_of_scope` and trust `trusted_inputs`. Return ONLY
-> `[{severity, file, line, skill, finding, fix}]`, omitting clean and
-> out-of-scope. `[]` if nothing."
-
-Concatenate all returned arrays. Dedupe by `(file, line)`.
-
-### Stage 3 — Attack-chain analysis (one subagent)
-
-> "Given findings `<merged>`, find chains where one finding enables
-> another. Verify reachability via Read/Grep. Return ONLY
-> `[{chain_id, finding_ids, effective_severity, narrative}, ...]`.
-> `narrative` is a 2–4 sentence plain-English story of what the
-> attacker sends, what breaks, and what they walk away with. No JSON,
-> no numbered steps, no code. Empty if none."
+Dispatch one `attack-chain-analysis` subagent with the merged
+findings. It returns chain objects with plain-English narratives, or
+`[]`.
 
 ### Stage 4 — Render
 
-Emit `# Security Review`, findings table (severity/file:line/skill/
-finding/fix). If chains exist, emit `## Attack chains` with one
-subsection per chain: `### Chain N — <effective_severity>`, then the
-`narrative` as a prose paragraph. One summary line. Zero findings:
-`Security review complete. No findings across N hotspots.`
+Emit `# Security Review`, then the legend *Critical = anyone on the
+internet can exploit. High = needs an account. Medium = limited blast
+radius. Low = defense-in-depth.* Then a findings table:
+**Severity / Where / What's wrong / How to fix** (use the auditor's
+`finding`/`fix` verbatim; append `(category: <skill>)` to *What's
+wrong*). If chains exist, emit `## Attack chains` with
+`### Chain N — <effective_severity>` per chain and the narrative as
+prose. One summary line. Zero findings: `Security review complete.
+No findings across N hotspots.`
 
 ### Stage 5 — Cleanup
 
@@ -107,11 +86,9 @@ interactively. Do not auto-rewrite files.
 
 ## Verification
 
-- [ ] For every vulnerability present in the input, a corresponding finding is identified
-- [ ] Each finding names the relevant OWASP category or CWE
-- [ ] For every finding, a concrete fix (code rewrite or specific remediation step) is provided
-- [ ] Findings reference source locations (function name, line, or code snippet)
-- [ ] Response includes a summary or severity assessment of the findings
+- [ ] Every vulnerability has a finding with `severity`, `file:line`, OWASP/CWE category, and a concrete fix
+- [ ] `finding`/`fix` text is plain language a non-security developer can act on
+- [ ] Response ends with a summary line
 
 ## References
 
