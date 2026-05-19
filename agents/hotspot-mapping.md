@@ -14,9 +14,17 @@ expected report length.
 ## Inputs
 
 The user message includes the threat model JSON produced by
-`threat-modeling`. The two fields you care about most:
+`threat-modeling` and **may** include a `Focus:` directive listing
+one or more paths (comma-separated). If `Focus:` is present,
+restrict your scan to those paths — do not scan other entries from
+`attack_surface`. This narrowing lets you be thorough on the slice
+you own, since the orchestrator dispatches one of you per batch of
+~5 dirs in parallel. If `Focus:` is absent, scan every path in
+`attack_surface`.
 
-- `attack_surface` — the paths to focus on.
+Two threat-model fields you care about most:
+
+- `attack_surface` — the paths to focus on (when no `Focus:` is set).
 - `out_of_scope` — paths and categories to ignore entirely. Treat
   these as authoritative.
 

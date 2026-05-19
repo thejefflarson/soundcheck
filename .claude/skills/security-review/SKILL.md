@@ -18,23 +18,18 @@ applies the per-category skills (`injection`, `csrf`, `ssrf`, …).
 
 ## Procedure
 
-Use the **Agent** tool. **Main loop ONLY dispatches Agent calls and
-merges JSON — never Read/Grep/Glob/Bash in main context.**
+Use the **Agent** tool plus **one** Glob call (for Stage 1 dir
+enumeration). **No Read/Grep/Bash in main context.** Stage prompts
+live in `agents/`: `threat-modeling`, `hotspot-mapping`,
+`design-review`, `vulnerability-audit`, `attack-chain-analysis`.
+This skill is just the coordinator.
 
-The five stage prompts live in `agents/` at the plugin root:
-`threat-modeling`, `hotspot-mapping`, `design-review`,
-`vulnerability-audit`, `attack-chain-analysis`. Each agent file carries its full system
-prompt, finding-style rules, and anti-injection guard. This skill is
-just the coordinator.
-
-Copy this checklist and check off each item as you progress:
+Copy this checklist as you progress:
 
 ```
-Pipeline progress:
 - [ ] Stage 0 — threat-modeling returned
-- [ ] Stage 1 — hotspot-mapping returned
-- [ ] Stages 1b+2 — design-review + N vulnerability-audit subagents dispatched in ONE message
-- [ ] Stages 1b+2 — all returned, merged, deduped by (file, line)
+- [ ] Stage 1 — hotspot-mapping batches dispatched and returned
+- [ ] Stages 1b+2 — design-review + N vulnerability-audit in ONE message
 - [ ] Stage 3 — attack-chain-analysis returned
 - [ ] Stage 4 — findings table rendered with severity legend
 - [ ] Stage 5 — suggested /security-cleanup to the user
@@ -46,10 +41,20 @@ Dispatch one `threat-modeling` subagent. It returns JSON describing
 purpose, deployment, trusted/untrusted inputs, attack surface, and
 out-of-scope. Thread this JSON into every later subagent.
 
-### Stage 1 — Hotspot map
+### Stage 1 — Hotspot map (batched fan-out)
 
-Dispatch one `hotspot-mapping` subagent with the threat model. It
-returns `[{category, skill, file, lines, what}, ...]`.
+**Glob `*/` and `*/*/`** to enumerate the top two directory levels
+of the whole repo — not just `attack_surface`, which Stage 0 often
+under-enumerates. Drop paths under `out_of_scope` and standard
+boilerplate (`node_modules`, `.venv`, `venv`, `dist`, `build`,
+`target`, `.git`, `vendor`, `__pycache__`, `.next`, `coverage`,
+`migrations`, `fixtures`, `tests`, `test`, `docs`). Dedupe. Don't
+filter by extension — language-agnostic.
+
+Split into batches of 5. **In a SINGLE message**, dispatch one
+`hotspot-mapping` per batch with the threat model JSON and
+`Focus: <comma-separated dirs>`. No cap on batches — scales with
+repo size. Concatenate, dedupe by `(file, lines)`.
 
 ### Stages 1b + 2 — Design review and vulnerability audit (parallel)
 

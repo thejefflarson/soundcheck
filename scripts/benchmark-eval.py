@@ -310,7 +310,11 @@ def run_review(
     # attack-chain-analysis). Those live at <soundcheck>/agents/ but cwd
     # is the target repo, so we pass --plugin-dir pointing at the
     # soundcheck checkout to make them discoverable.
-    allowed_tools = "Agent" if skill_name == "security-review" else None
+    # security-review needs Glob in addition to Agent so the orchestrator
+    # can enumerate source directories before fanning out hotspot-mapping
+    # subagents. Read/Grep stay denied — the orchestrator still cannot
+    # inspect file contents in the main context.
+    allowed_tools = "Agent,Glob" if skill_name == "security-review" else None
     plugin_dir = ROOT if skill_name == "security-review" else None
     # The orchestrator fans out into 5+ subagent calls (one threat-model,
     # one hotspot map, 1b + N audit chunks, one attack-chain pass). All of
@@ -467,6 +471,8 @@ def main() -> int:
         description="Evaluation benchmark for holistic Soundcheck skills"
     )
     parser.add_argument("--repo", metavar="NAME", help="Run a single repo")
+    parser.add_argument("--skill", metavar="NAME",
+                        help=f"Run a single skill ({', '.join(SKILLS)})")
     parser.add_argument("--model", default=DEFAULT_MODEL,
                         help=f"Review model (default: {DEFAULT_MODEL})")
     parser.add_argument("--verbose", action="store_true",
@@ -483,9 +489,23 @@ def main() -> int:
             print(f"Available: {[r['id'] for r in REPO_MANIFEST]}")
             return 1
 
-    total = len(repos) * len(SKILLS)
+    skills = SKILLS
+    if args.skill:
+        if args.skill not in SKILLS:
+            print(f"Unknown skill: {args.skill}")
+            print(f"Available: {SKILLS}")
+            return 1
+        skills = [args.skill]
+        # security-review's judge compares findings against the hotspots
+        # output for the coverage gate. If only security-review is
+        # selected, also run hotspots as a reference (skill list preserves
+        # order so hotspots runs first).
+        if args.skill == "security-review":
+            skills = ["hotspots", "security-review"]
+
+    total = len(repos) * len(skills)
     print(f"\nSoundcheck Eval Benchmark — {len(repos)} repo(s) x "
-          f"{len(SKILLS)} skills = {total} evaluations")
+          f"{len(skills)} skills = {total} evaluations")
     print(f"Review model: {args.model}   Judge model: {JUDGE_MODEL}\n")
 
     all_results: list[dict] = []
@@ -503,7 +523,7 @@ def main() -> int:
 
         if not repo_dir.exists():
             print(f"  ERROR: repo not found at {repo_dir}")
-            for skill in SKILLS:
+            for skill in skills:
                 all_results.append({
                     "repo": repo_id, "skill": skill,
                     "error": "repo not cloned",
@@ -512,7 +532,7 @@ def main() -> int:
 
         hotspots_response: str | None = None
 
-        for skill_name in SKILLS:
+        for skill_name in skills:
             print(f"\n  {repo_id} x {skill_name}")
             try:
                 review_response, review_time = run_review(
