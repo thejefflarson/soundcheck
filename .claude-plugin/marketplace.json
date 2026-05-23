@@ -12,7 +12,8 @@
       "source": {
         "source": "github",
         "repo": "thejefflarson/soundcheck",
-        "ref": "v1.9.0"
+        "ref": "v1.9.0",
+        "sha": "947fb3c3d69639154b0c51a105f9640f126bb65d"
       }
     }
   ]

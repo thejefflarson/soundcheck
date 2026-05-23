@@ -13,5 +13,13 @@
     "vulnerability",
     "llm-security"
   ],
-  "skills": "./.claude/skills"
+  "skills": "./.claude/skills",
+  "permissions": [
+    "read"
+  ],
+  "minClaudeCodeVersion": "1.0.0",
+  "security": {
+    "contact": "https://github.com/thejefflarson/soundcheck/security/advisories/new",
+    "policy": "https://github.com/thejefflarson/soundcheck/blob/main/SECURITY.md"
+  }
 }
