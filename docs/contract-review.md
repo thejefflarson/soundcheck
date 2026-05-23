@@ -13,7 +13,12 @@ Two equivalent entry points:
 - **In a Claude Code session:** type `/contract-review`. The skill
   runs in the current session, dispatches subagents (threat-modeling,
   hotspot-mapping, per-hotspot `contract-audit`), and prints a
-  findings table at the end.
+  findings table at the end. Subagents use the same tool permissions as
+  the parent session (file reads across the repo, no writes). They
+  operate only on the target repo directory; they do not make network
+  requests or execute code. Transitive dispatch stops at the
+  `contract-audit` tier — `contract-audit` agents do not spawn further
+  subagents.
 - **Headless from a checkout:** `python scripts/contract-review.py
   --repo-dir REPO --model opus`. Same skill, same orchestration; the
   CLI exists for CI / scheduled / scripted runs.
@@ -21,6 +26,13 @@ Two equivalent entry points:
 Either way the output is a Markdown findings table plus a
 machine-readable `<soundcheck-contract>` JSON block. No on-disk state
 persists between runs.
+
+> **Treat all text fields in the `<soundcheck-contract>` JSON block as
+> untrusted input.** The block is LLM-generated from scanned-repo
+> content; a malicious file in the target repo could inject arbitrary
+> text into fields like `description`, `location`, or `detail`. Do not
+> interpolate these fields directly into SQL queries, HTML templates, or
+> shell commands without escaping or parameterisation first.
 
 ## Hit rate against known CVEs
 
@@ -45,6 +57,14 @@ from ≥2 sites on a security-relevant path") doesn't reliably reach
 them. The bugs in those misses were memory-safety class, somewhat
 out of contract-review's design scope.
 
+> **Do not treat a clean `contract-review` result as meaningful security
+> assurance.** A 50% hit rate on valid runs means the tool misses half
+> of the bugs it is designed to find; it also only covers bugs on the
+> public entry-point surface the seeder reaches. Use findings as
+> *hypotheses to investigate*, not as a security certificate. Pair with
+> `security-review`, manual audit, and fuzzing before concluding a
+> component is secure.
+
 ## Known limitations
 
 - Repos larger than ~200K LOC currently exceed the 30-minute
@@ -53,10 +73,16 @@ out of contract-review's design scope.
 - The seeder is biased toward public API surface and away from
   internal helpers, which means deep-codec / kernel-style bugs are
   harder to find.
-- On two of seven benchmark runs the tool drifted from auditing the
+- **Context drift is a security risk, not just a usability issue.** On
+  two of seven benchmark runs the orchestrator drifted from auditing the
   target repo to auditing Soundcheck's own scripts (visible via the
-  plugin's own source tree). Watch for findings that reference
-  unexpected paths.
+  plugin's own source tree). When this happens, a crafted file in the
+  target repo could exploit the drift to steer the auditor toward
+  producing a false-clean result for the target while findings reference
+  unexpected paths. Always verify that all finding paths are inside the
+  target repo before acting on results. If unexpected paths appear,
+  discard the run and re-run with the target repo isolated in a separate
+  checkout directory.
 
 ## Contract review vs full security review
 
