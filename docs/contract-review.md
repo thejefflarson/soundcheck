@@ -6,6 +6,22 @@ assume — predicate-misnaming, fail-open on unusual inputs, trust-anchor
 confusion. This page documents what we've learned about its hit rate
 and limitations from running it against publicly-disclosed CVEs.
 
+## Running it
+
+Two equivalent entry points:
+
+- **In a Claude Code session:** type `/contract-review`. The skill
+  runs in the current session, dispatches subagents (threat-modeling,
+  hotspot-mapping, per-hotspot `contract-audit`), and prints a
+  findings table at the end.
+- **Headless from a checkout:** `python scripts/contract-review.py
+  --repo-dir REPO --model opus`. Same skill, same orchestration; the
+  CLI exists for CI / scheduled / scripted runs.
+
+Either way the output is a Markdown findings table plus a
+machine-readable `<soundcheck-contract>` JSON block. No on-disk state
+persists between runs.
+
 ## Hit rate against known CVEs
 
 We benchmarked `contract-review` against six small-to-medium open-source

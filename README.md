@@ -116,13 +116,21 @@ On large monorepos that exceed per-call limits, fall back to
 For caller/callee invariant gaps — the bug class where two functions
 each look fine in isolation but have a gap together (an auth helper
 named like an identity check but only matching by name, a "verified"
-predicate that fails open on null input):
+predicate that fails open on null input).
+
+In a Claude Code session:
+
+```
+/contract-review
+```
+
+Or headless from a checkout:
 
 ```bash
 python scripts/contract-review.py --repo-dir . --model opus
 ```
 
-Output is a findings table to stdout. Findings are **hypothesis-grade**
+Both produce the same findings table. Findings are **hypothesis-grade**
 — read the code and write a PoC before filing. See
 [`docs/contract-review.md`](docs/contract-review.md) for hit-rate
 numbers, the comparison against `security-review`, and known limitations.
