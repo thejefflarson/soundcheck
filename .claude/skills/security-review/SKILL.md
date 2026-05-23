@@ -51,10 +51,12 @@ boilerplate (`node_modules`, `.venv`, `venv`, `dist`, `build`,
 `migrations`, `fixtures`, `tests`, `test`, `docs`). Dedupe. Don't
 filter by extension — language-agnostic.
 
-Split into batches of 5. **In a SINGLE message**, dispatch one
-`hotspot-mapping` per batch with the threat model JSON and
-`Focus: <comma-separated dirs>`. No cap on batches — scales with
-repo size. Concatenate, dedupe by `(file, lines)`.
+Split into batches of **2 dirs each**. **In a SINGLE message**,
+dispatch one `hotspot-mapping` per batch with the threat model JSON
+and `Focus: <comma-separated dirs>`. Smaller batches give each
+subagent narrow enough scope to actually read most files rather
+than sample. No cap; scales with repo size. Concatenate, dedupe by
+`(file, lines)`.
 
 ### Stages 1b + 2 — Design review and vulnerability audit (parallel)
 

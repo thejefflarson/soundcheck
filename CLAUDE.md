@@ -2,17 +2,35 @@
 
 ## What is Soundcheck?
 
-Soundcheck is a Claude Code plugin providing 45 auto-invoking security skills, one
-on-demand `/security-review` command, and 5 subagents (`threat-modeling`,
-`hotspot-mapping`, `design-review`, `vulnerability-audit`,
-`attack-chain-analysis`) that the `/security-review` orchestrator dispatches. It
-covers OWASP, CWE, and real-world vulnerability patterns plus emerging threats
-tracked in `docs/threat-radar.md`. When Claude detects vulnerable code patterns,
-the relevant skill auto-invokes, flags the vulnerable code, explains the change,
-and continues with the original task — no user intervention required.
+Soundcheck is a Claude Code plugin providing 45 auto-invoking security skills
+plus three on-demand review modes, each scoped to a distinct use case. When
+Claude detects vulnerable code patterns mid-task, the relevant per-category
+skill auto-invokes, flags the issue, explains the change, and continues — no
+user intervention required.
 
 Auto-invocation is driven entirely by the `description` frontmatter in each `SKILL.md`.
 No CLAUDE.md trigger mapping is needed — the description field IS the trigger.
+
+## Three review modes
+
+The on-demand reviews are split into three discrete modes, each with its own
+skill, driver script, latency profile, and target bug class. Reach for the one
+that matches the situation; don't try to make one mode do another's job.
+
+| Mode | Skill | Driver | Latency | Model | Target |
+|------|-------|--------|---------|-------|--------|
+| 1 — PR gate | `pr-review` | `security-review-action.py --diff-base REF` | ≤1 min | haiku | Critical/High OWASP in changed files |
+| 2 — Full scan | `security-review` | `security-review-action.py --full-repo` | ~20 min | sonnet/opus | All severities, whole repo, with subagent fan-out |
+| 3 — Contract review | `contract-review` | `contract-review.py --rounds N` | ~30 min | opus | Caller/callee invariant gaps that single-pass review misses |
+
+Mode 2 dispatches 5 subagents (`threat-modeling`, `hotspot-mapping`,
+`design-review`, `vulnerability-audit`, `attack-chain-analysis`). Mode 1 is
+single-pass — no subagent dispatch — and filters to Critical/High only so
+the gate stays fast and quiet. Mode 3 dispatches `threat-modeling`,
+`hotspot-mapping`, and one `contract-audit` per round. Output is the
+findings table printed to stdout — no on-disk state. A Mythos-style
+trust-anchor-confusion bug that mode 2 missed twice (Botan
+`certificate_known`) is the canonical mode 3 target.
 
 ## Threat model (for /security-review against this repo)
 

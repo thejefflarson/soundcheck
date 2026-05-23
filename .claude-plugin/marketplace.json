@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "soundcheck",
-      "description": "45 security skills covering OWASP Web Top 10:2025, LLM Top 10:2025, and API Security Top 10:2023. Auto-invokes on vulnerable code and rewrites it inline.",
+      "description": "52 security skills covering OWASP Web Top 10:2025, LLM Top 10:2025, API Security Top 10:2023, and systems-software bug classes (memory-API misuse, crypto-library wiring, privilege handling, concurrency, numeric trust-boundary), plus three review modes (PR gate, full scan, contract review). Auto-invokes on vulnerable code and rewrites it inline.",
       "version": "1.8.1",
       "license": "MIT",
       "source": {

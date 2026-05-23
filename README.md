@@ -1,6 +1,6 @@
 # Soundcheck
 
-Automated security checks for Claude Code. 45 skills covering injection, authentication,
+Automated security checks for Claude Code. 52 skills covering injection, authentication,
 cryptography, access control, LLM-specific threats, and more — drawn from OWASP, CWE, and
 real-world vulnerability patterns. Skills auto-invoke when Claude writes vulnerable code,
 flag the issue, explain the fix, and continue with your original task.
@@ -9,19 +9,30 @@ No configuration needed. No user intervention required.
 
 ---
 
-## Security Review
+## Three review modes
 
-### Interactive: `/security-review`
+Auto-invoking skills cover what Claude writes mid-task. On top of that,
+Soundcheck has three on-demand review modes for when you want to scan
+existing code. Each mode answers a different question:
 
-Type `/security-review` in any Claude Code session for a full security audit.
-Works best with sonnet or opus — the skill orchestrates subagents internally.
+| Mode | When to use | Time | Cost | Catches |
+|---|---|---|---|---|
+| **`pr-review`** | Every pull request, in CI | ≤1 min | a few cents | Critical/High OWASP issues in the diff |
+| **`security-review`** | Nightly CI, monthly audit, or manual deep scan | ~20 min | ~$4 | All severities, whole repo, with attack chains |
+| **`contract-review`** | Nightly/weekly CI, pre-release scan, or after a major refactor | ~30 min | ~$10–20 | Bugs where a function does less than its callers assume — caller/callee invariant gaps |
 
-### CI / PR gate: [`soundcheck-action`](https://github.com/thejefflarson/soundcheck-action)
+If you're not sure which to run: gate every pull request on `pr-review`,
+schedule `security-review` nightly or weekly, and add `contract-review`
+on a slower cadence (weekly or pre-release) once your obvious bugs are
+fixed. All three can run in CI — `pr-review` is the only one that's
+appropriate for *per-PR* feedback because of the latency budget.
 
-Run Soundcheck's security review on every pull request using the
-[Soundcheck GitHub Action](https://github.com/thejefflarson/soundcheck-action).
-It comments a severity-ranked findings table on the PR and, when findings are
-rewritable, commits the fixes back to the branch.
+### 1. `pr-review` — fast PR gate
+
+Reviews only the files changed in your branch. Reports Critical and High
+findings. Fast and cheap enough to run on every pull request.
+
+**In CI** — use the [Soundcheck GitHub Action](https://github.com/thejefflarson/soundcheck-action):
 
 ```yaml
 name: Security Review
@@ -42,27 +53,119 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See the [action README](https://github.com/thejefflarson/soundcheck-action)
-for inputs (`max-files`, `model`, `base-branch`) and outputs
-(`pr-url`, `findings-count`).
+The action comments a severity-ranked findings table on the PR and, when
+findings are auto-fixable, commits the fixes back to the branch.
 
-### Local CLI
-
-For one-off scans from your checkout, run the review script directly. PR-scoped:
+**Locally** — run the same review script from your checkout:
 
 ```bash
 python scripts/security-review-action.py --repo-dir . --diff-base main
 ```
 
-Full-repo scan (sonnet recommended, ~10 min, ~$4):
+### 2. `security-review` — full repo audit
+
+Reviews the whole repo. Reports all severities. Use it for a monthly
+deep scan or before a release.
+
+**In Claude Code** — just type `/security-review` in any Claude Code
+session. Works best with sonnet or opus.
+
+**Locally** — run the script directly:
 
 ```bash
 python scripts/security-review-action.py --repo-dir . --full-repo --model sonnet
 ```
 
-On a medium-to-large monorepo, `--full-repo` pushes a single review call past
-typical per-request limits. Start with `--diff-base main` (or point
-`--repo-dir` at a subdirectory) before attempting a whole-repo sweep.
+On a large monorepo, `--full-repo` can push past typical per-request limits.
+If it hits a timeout, fall back to `--diff-base main` against a smaller
+branch.
+
+### 3. `contract-review` — deep audit for subtler bugs
+
+Reviews each public function in your codebase by reading what callers
+expect from it and checking whether the body actually guarantees that.
+Designed to find bugs that single-pass review misses — the kind where
+function-A and function-B each look fine in isolation, but together
+they have a gap. Typical shapes: a helper whose body is weaker than
+its name suggests, a check that fails open on an unusual input, a
+caller that trusts a return value beyond what the body actually
+guarantees.
+
+Run it locally:
+
+```bash
+python scripts/contract-review.py --repo-dir . --model opus
+```
+
+It prints a findings table to stdout. Each row names the function
+being audited, where it's called from, the contract gap, and a
+concrete attacker scenario.
+
+**Findings are hypothesis-grade.** Contract-review surfaces *candidate*
+bugs that a maintainer should read carefully — not confirmed CVEs.
+In our testing, building actual proof-of-concept code for the findings
+produced a meaningful false-positive rate: some claims described real
+code patterns, but the path to exploitation broke at a downstream
+check that the audit hadn't traced. Treat each finding as "read this
+carefully and write a PoC before filing."
+
+#### What it catches and what it misses
+
+We benchmarked contract-review against six small-to-medium open-source
+projects, each pinned to a commit just before a publicly-disclosed
+CVE landed. We asked one question per repo: *did the tool surface the
+specific function the maintainers fixed?*
+
+| Repo size | Bug location | Found |
+|---|---|---|
+| 15K files (Java) | public auth handler | ✓ Critical, round 1 |
+| 250 files (C) | function at top of binary's main path | ✓ Critical |
+| 4.5K files (C) | deep codec internal helper | ✗ — not seeded |
+| 78 files (C) | static internal helper | ✗ — not seeded |
+| 6.8K files (Java) | run drifted to scanning Soundcheck itself, not the target | — invalid |
+| 320K LOC (C++) | wall-clock timeout before completion | — invalid |
+
+**Hit rate on valid runs: 2/4.** Both hits were on *public entry-point
+functions* — the seeder picks those up reliably. Both misses were on
+*static internal helpers* — the seeder's heuristic ("functions called
+from ≥2 sites on a security-relevant path") doesn't reliably reach
+them. The bugs in those misses were memory-safety class, somewhat
+out of contract-review's design scope.
+
+Known limitations:
+- Repos larger than ~200K LOC currently exceed the 30-minute single-LLM-call
+  budget. Architecturally fixable by batching into multiple calls.
+- The seeder is biased toward public API surface and away from internal
+  helpers, which means deep-codec / kernel-style bugs are harder to find.
+- On two of seven benchmark runs the tool drifted from auditing the target
+  repo to auditing Soundcheck's own scripts (visible via the plugin's
+  own source tree). Watch for findings that reference unexpected paths.
+
+#### Contract review vs full security review
+
+We ran both `security-review` and `contract-review` against the same four
+small-to-medium repos (the two that fit in budget on opus). The two modes
+have *disjoint* strengths:
+
+| Repo (target bug class) | `security-review` | `contract-review` |
+|---|---|---|
+| Java auth handler (auth-bypass via control flow) | ✗ missed | ✓ Critical |
+| C SMTP relay (command injection via DNS) | ✓ Critical | ✓ Critical |
+| C codec (integer overflow → memory write) | ✗ missed | ✗ missed |
+| C transfer engine (uninit-stack info leak) | ✗ missed | ✗ missed |
+
+`security-review` is the broad OWASP/LLM-Top-10 sweep — high finding volume
+(20-40 per repo), great fit for SQL-injection / shell-injection / cryptographic
+choice / authentication-flow class bugs. `contract-review` is the focused
+caller/callee-invariant auditor — lower volume (5-15 per repo), catches the
+bugs `security-review`'s pattern matchers don't have a template for. The
+one overlap (command injection) is where both modes have native skill
+coverage; everywhere else they catch different things or both miss.
+
+For memory-safety bugs neither mode reliably finds, run an instrumented
+build (`-fsanitize=address,undefined`), a fuzzer (libFuzzer, OSS-Fuzz),
+and a static analyzer (`clang-tidy`, CodeQL) alongside Soundcheck. Mature
+deterministic tools own that territory.
 
 ### Non-Anthropic providers (Bedrock, Vertex)
 
@@ -101,7 +204,7 @@ claude plugin marketplace add thejefflarson/soundcheck
 claude plugin install soundcheck
 ```
 
-After installation, all 45 skills are active in every Claude Code session. Claude will
+After installation, all 52 skills are active in every Claude Code session. Claude will
 automatically invoke the relevant skill whenever it detects vulnerable code patterns.
 
 **Try it without installing** (current session only):
@@ -178,7 +281,9 @@ background on every relevant code-writing task.
 
 | Command | What it does |
 |---|---|
+| `/pr-review` | Fast Critical/High gate over the files changed in your branch — usually run by the [GitHub Action](https://github.com/thejefflarson/soundcheck-action), not by hand |
 | `/security-review` | Full OWASP sweep — subagent pipeline with threat model, hotspot mapping, parallel auditors, design review, attack-chain analysis |
+| `/contract-review` | Deep audit that reads each public function alongside every caller and flags places where the body delivers less than the callers expect |
 
 ---
 
