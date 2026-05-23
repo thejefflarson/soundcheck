@@ -64,35 +64,51 @@ slower cadence once obvious bugs are fixed.
 
 #### `pr-review` — the CI gate
 
+> **Security note:** `pr-review` passes untrusted repository content into an LLM
+> context. Prompt-injection mitigations are instruction-level only — a crafted
+> file in the PR could influence the model's output. Treat a clean gate result as
+> "no obvious Critical/High findings," not as a guarantee of correctness. Do not
+> use `pr-review` output as the sole gate for high-stakes merges; pair it with
+> human review for security-sensitive changes.
+
 Use the [Soundcheck GitHub Action](https://github.com/thejefflarson/soundcheck-action):
 
 ```yaml
 name: Security Review
 on: [pull_request]
+# contents:write is only required when autofix is enabled (apply-rewrites: 'true').
+# For read-only review, downgrade to contents:read.
+# Do NOT trigger on fork PRs — GITHUB_TOKEN from a fork cannot write back to the
+# base repo, and untrusted fork code runs with write permissions.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write        # needed only for autofix commits; use contents:read otherwise
+  pull-requests: write   # needed to post the findings comment
 jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
-      - uses: thejefflarson/soundcheck-action@v1
+      - uses: thejefflarson/soundcheck-action@ba406c301382211d66118ebcc699267745f7f849  # v2.1.2
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The action comments a severity-ranked findings table on the PR. When
-findings are auto-fixable, it commits the fixes back to the branch.
-
-To run locally against a branch:
+The action comments a severity-ranked findings table on the PR. Auto-fix
+(committing LLM-generated changes back to the branch) is **opt-in**: set
+`apply-rewrites: 'true'` in the action inputs to enable it; it is **off
+by default**. Before enabling auto-fix in CI, require human review of the
+resulting commits via branch-protection rules — the action provides no
+additional approval gate of its own. To preview what would change without
+committing, run the script locally:
 
 ```bash
 python scripts/security-review-action.py --repo-dir . --diff-base main
 ```
+
+This dry-run prints findings without writing any files.
 
 #### `security-review` — full repo audit
 
@@ -237,6 +253,25 @@ Reproduce any of this with:
 ---
 
 ## Configuration
+
+### Cost control
+
+`security-review` and `contract-review` can be expensive. Set a hard budget
+cap with `--max-budget-usd` to prevent runaway costs in CI:
+
+```bash
+# Cap full-repo scan at $5
+python scripts/security-review-action.py --repo-dir . --full-repo \
+  --model sonnet --max-budget-usd 5
+
+# Cap contract review at $15
+python scripts/contract-review.py --repo-dir . --model opus \
+  --max-budget-usd 15
+```
+
+If the budget is exceeded, the script exits non-zero and prints a partial
+findings table. Default budget is **$20** for `security-review` and **$30**
+for `contract-review`; always set an explicit cap in CI to avoid surprises.
 
 ### Optional: reinforce triggers in your `CLAUDE.md`
 
