@@ -1,38 +1,70 @@
 # Soundcheck
 
-Automated security checks for Claude Code. 52 skills covering injection, authentication,
-cryptography, access control, LLM-specific threats, and more — drawn from OWASP, CWE, and
-real-world vulnerability patterns. Skills auto-invoke when Claude writes vulnerable code,
-flag the issue, explain the fix, and continue with your original task.
+Automated security checks for Claude Code. 52 skills covering injection,
+authentication, cryptography, access control, LLM-specific threats, and
+more — drawn from OWASP, CWE, and real-world vulnerability patterns.
+Skills auto-invoke when Claude writes vulnerable code, flag the issue,
+explain the fix, and continue with your original task.
 
 No configuration needed. No user intervention required.
 
 ---
 
-## Three review modes
+## Install
 
-Auto-invoking skills cover what Claude writes mid-task. On top of that,
-Soundcheck has three on-demand review modes for when you want to scan
-existing code. Each mode answers a different question:
+```bash
+claude plugin marketplace add thejefflarson/soundcheck
+claude plugin install soundcheck
+```
 
-| Mode | When to use | Time | Cost | Catches |
+All 52 skills are active in every Claude Code session after install. To
+try without installing (current session only):
+
+```bash
+claude --plugin-dir /path/to/soundcheck
+```
+
+---
+
+## How you'll use it
+
+### Day to day: skills auto-invoke while Claude writes code
+
+You don't run anything. When Claude writes code that matches a skill's
+trigger description, the skill invokes automatically, flags the
+vulnerability, and rewrites the section with a secure alternative. You'll
+see the skill name in the tool-use stream — for example:
+
+> *Invoking soundcheck:injection*
+> *Found: SQL query built from string concatenation at line 42. Rewrote
+> using `cursor.execute(query, params)` with `%s` placeholders so user
+> input is bound by the driver.*
+
+The 52 skills cover roughly four families: web/API (OWASP Web Top 10),
+LLM/AI (OWASP LLM Top 10), API-specific (OWASP API Top 10), and
+systems-software (memory-API misuse, crypto-library wiring, privilege
+handling, concurrency, numeric trust-boundary). Trigger reference at the
+bottom of this doc.
+
+### On demand: three review modes for existing code
+
+When you want to scan code that's already written — a PR diff, a whole
+repo before a release, or a deep audit before shipping — reach for one
+of these:
+
+| Mode | When | Time | Cost | Catches |
 |---|---|---|---|---|
-| **`pr-review`** | Every pull request, in CI | ≤1 min | a few cents | Critical/High OWASP issues in the diff |
-| **`security-review`** | Nightly CI, monthly audit, or manual deep scan | ~20 min | ~$4 | All severities, whole repo, with attack chains |
-| **`contract-review`** | Nightly/weekly CI, pre-release scan, or after a major refactor | ~30 min | ~$10–20 | Bugs where a function does less than its callers assume — caller/callee invariant gaps |
+| **`pr-review`** | Every pull request, in CI | ≤1 min | a few cents | Critical/High OWASP in the diff |
+| **`security-review`** | Nightly CI or monthly audit | ~20 min | ~$4 | All severities, whole repo, attack chains |
+| **`contract-review`** | Pre-release or after big refactor | ~30 min | ~$10–20 | Bugs where a function does less than callers assume |
 
-If you're not sure which to run: gate every pull request on `pr-review`,
-schedule `security-review` nightly or weekly, and add `contract-review`
-on a slower cadence (weekly or pre-release) once your obvious bugs are
-fixed. All three can run in CI — `pr-review` is the only one that's
-appropriate for *per-PR* feedback because of the latency budget.
+Rough rule of thumb: gate every PR on `pr-review`, schedule
+`security-review` nightly or weekly, and add `contract-review` on a
+slower cadence once obvious bugs are fixed.
 
-### 1. `pr-review` — fast PR gate
+#### `pr-review` — the CI gate
 
-Reviews only the files changed in your branch. Reports Critical and High
-findings. Fast and cheap enough to run on every pull request.
-
-**In CI** — use the [Soundcheck GitHub Action](https://github.com/thejefflarson/soundcheck-action):
+Use the [Soundcheck GitHub Action](https://github.com/thejefflarson/soundcheck-action):
 
 ```yaml
 name: Security Review
@@ -53,126 +85,170 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The action comments a severity-ranked findings table on the PR and, when
-findings are auto-fixable, commits the fixes back to the branch.
+The action comments a severity-ranked findings table on the PR. When
+findings are auto-fixable, it commits the fixes back to the branch.
 
-**Locally** — run the same review script from your checkout:
+To run locally against a branch:
 
 ```bash
 python scripts/security-review-action.py --repo-dir . --diff-base main
 ```
 
-### 2. `security-review` — full repo audit
+#### `security-review` — full repo audit
 
-Reviews the whole repo. Reports all severities. Use it for a monthly
-deep scan or before a release.
+In a Claude Code session:
 
-**In Claude Code** — just type `/security-review` in any Claude Code
-session. Works best with sonnet or opus.
+```
+/security-review
+```
 
-**Locally** — run the script directly:
+Or from a checkout:
 
 ```bash
 python scripts/security-review-action.py --repo-dir . --full-repo --model sonnet
 ```
 
-On a large monorepo, `--full-repo` can push past typical per-request limits.
-If it hits a timeout, fall back to `--diff-base main` against a smaller
-branch.
+On large monorepos that exceed per-call limits, fall back to
+`--diff-base main` on a smaller branch.
 
-### 3. `contract-review` — deep audit for subtler bugs
+#### `contract-review` — deep audit for subtler bugs
 
-Reviews each public function in your codebase by reading what callers
-expect from it and checking whether the body actually guarantees that.
-Designed to find bugs that single-pass review misses — the kind where
-function-A and function-B each look fine in isolation, but together
-they have a gap. Typical shapes: a helper whose body is weaker than
-its name suggests, a check that fails open on an unusual input, a
-caller that trusts a return value beyond what the body actually
-guarantees.
-
-Run it locally:
+For caller/callee invariant gaps — the bug class where two functions
+each look fine in isolation but have a gap together (an auth helper
+named like an identity check but only matching by name, a "verified"
+predicate that fails open on null input):
 
 ```bash
 python scripts/contract-review.py --repo-dir . --model opus
 ```
 
-It prints a findings table to stdout. Each row names the function
-being audited, where it's called from, the contract gap, and a
-concrete attacker scenario.
+Output is a findings table to stdout. Findings are **hypothesis-grade**
+— read the code and write a PoC before filing. See
+[`docs/contract-review.md`](docs/contract-review.md) for hit-rate
+numbers, the comparison against `security-review`, and known limitations.
 
-**Findings are hypothesis-grade.** Contract-review surfaces *candidate*
-bugs that a maintainer should read carefully — not confirmed CVEs.
-In our testing, building actual proof-of-concept code for the findings
-produced a meaningful false-positive rate: some claims described real
-code patterns, but the path to exploitation broke at a downstream
-check that the audit hadn't traced. Treat each finding as "read this
-carefully and write a PoC before filing."
+---
 
-#### What it catches and what it misses
+## Does it actually work?
 
-We benchmarked contract-review against six small-to-medium open-source
-projects, each pinned to a commit just before a publicly-disclosed
-CVE landed. We asked one question per repo: *did the tool surface the
-specific function the maintainers fixed?*
+Short answer: yes, with calibrations per mode. Here's the evidence.
 
-| Repo size | Bug location | Found |
-|---|---|---|
-| 15K files (Java) | public auth handler | ✓ Critical, round 1 |
-| 250 files (C) | function at top of binary's main path | ✓ Critical |
-| 4.5K files (C) | deep codec internal helper | ✗ — not seeded |
-| 78 files (C) | static internal helper | ✗ — not seeded |
-| 6.8K files (Java) | run drifted to scanning Soundcheck itself, not the target | — invalid |
-| 320K LOC (C++) | wall-clock timeout before completion | — invalid |
+### Head-to-head against bare Claude (auto-invoking skills)
 
-**Hit rate on valid runs: 2/4.** Both hits were on *public entry-point
-functions* — the seeder picks those up reliably. Both misses were on
-*static internal helpers* — the seeder's heuristic ("functions called
-from ≥2 sites on a security-relevant path") doesn't reliably reach
-them. The bugs in those misses were memory-safety class, somewhat
-out of contract-review's design scope.
+130 deliberately broken fixtures — Flask login routes with hardcoded
+passwords, SQL queries built from string concatenation, file uploads
+without size limits. Each has a checklist of what a thorough review
+should catch and fix. Claude reviews each fixture twice (with Soundcheck
+loaded, with a generic "be a security reviewer" prompt); a judge call
+scores both against the checklist. *Full pass* means every checklist
+item satisfied.
 
-Known limitations:
-- Repos larger than ~200K LOC currently exceed the 30-minute single-LLM-call
-  budget. Architecturally fixable by batching into multiple calls.
-- The seeder is biased toward public API surface and away from internal
-  helpers, which means deep-codec / kernel-style bugs are harder to find.
-- On two of seven benchmark runs the tool drifted from auditing the target
-  repo to auditing Soundcheck's own scripts (visible via the plugin's
-  own source tree). Watch for findings that reference unexpected paths.
+| Model | With Soundcheck | Plain Claude | Lift |
+|---|---|---|---|
+| Haiku | **77%** full pass | 40% | +37 pts |
+| Sonnet | **90%** full pass | 58% | +32 pts |
 
-#### Contract review vs full security review
+When the two reviews disagree, Soundcheck wins 6 of 7 times. Lift is
+similar across model tiers — loading the plugin raises the floor
+everywhere we tested.
 
-We ran both `security-review` and `contract-review` against the same four
-small-to-medium repos (the two that fit in budget on opus). The two modes
-have *disjoint* strengths:
+Statistical detail: Wilcoxon signed-rank on per-fixture score
+differences, p < 1e-6 on haiku, p < 1e-4 on sonnet. Methodology in
+[`docs/smoke-test-methodology.md`](docs/smoke-test-methodology.md).
 
-| Repo (target bug class) | `security-review` | `contract-review` |
-|---|---|---|
-| Java auth handler (auth-bypass via control flow) | ✗ missed | ✓ Critical |
-| C SMTP relay (command injection via DNS) | ✓ Critical | ✓ Critical |
-| C codec (integer overflow → memory write) | ✗ missed | ✗ missed |
-| C transfer engine (uninit-stack info leak) | ✗ missed | ✗ missed |
+### External validation
 
-`security-review` is the broad OWASP/LLM-Top-10 sweep — high finding volume
-(20-40 per repo), great fit for SQL-injection / shell-injection / cryptographic
-choice / authentication-flow class bugs. `contract-review` is the focused
-caller/callee-invariant auditor — lower volume (5-15 per repo), catches the
-bugs `security-review`'s pattern matchers don't have a template for. The
-one overlap (command injection) is where both modes have native skill
-coverage; everywhere else they catch different things or both miss.
+Our own fixtures could bias the result toward patterns we had in mind.
+Two independent checks:
 
-For memory-safety bugs neither mode reliably finds, run an instrumented
-build (`-fsanitize=address,undefined`), a fuzzer (libFuzzer, OSS-Fuzz),
-and a static analyzer (`clang-tidy`, CodeQL) alongside Soundcheck. Mature
-deterministic tools own that territory.
+- **[SecurityEval](https://github.com/s2e-lab/SecurityEval)** — 104
+  vulnerable Python samples published by academic researchers with
+  ground-truth CWE labels. Both arms hit **100% detection and 100% fix**
+  here. The snippets are obvious enough that bare Claude already catches
+  everything, so this benchmark doesn't discriminate further — but it
+  confirms Soundcheck doesn't break anything on code it wasn't designed
+  against.
+- **Real OWASP projects** — 13 vulnerable files pinned from OWASP Juice
+  Shop (TypeScript) and OWASP PyGoat (Python). Soundcheck caught and
+  fully fixed **12 of 13 (92%)**, 100% detection across all 13. The
+  one miss — open-redirect in Juice Shop's `redirect.ts` — was detected
+  but only partially fixed.
+
+### Review times (full-repo pipeline)
+
+`scripts/benchmark-eval.py` against four open-source projects at pinned
+commits:
+
+| Repo | Language | Haiku | Sonnet |
+|---|---|---|---|
+| [redash](https://github.com/getredash/redash) | Python | **6.1 min** | 17.3 min |
+| [gitea](https://github.com/go-gitea/gitea) | Go | **6.2 min** | 6.6 min + timeout* |
+| [cal.com](https://github.com/calcom/cal.com) | TypeScript | **8.7 min** | 25.7 min |
+| [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **5.7 min** | 14.7 min |
+
+\* Sonnet's full audit on gitea exceeded the 20-minute per-call timeout.
+Haiku finished gitea in 2 minutes. For very large monorepos, the
+PR-scoped `--diff-base` flow is the practical option.
+
+Practical guidance:
+
+- **Haiku is fast enough for PR gates** — typical diff-scoped reviews
+  finish in 1-2 minutes.
+- **Sonnet is for nightly/monthly deep scans** — higher-quality
+  findings but 3-4× the per-call time.
+- **Soundcheck doesn't add latency on top of bare Claude.** On the
+  SecurityEval paired run, plugin-loaded reviews were *faster* than
+  bare (15.2s median vs 17.7s) — the skill's focused prompt finishes
+  sooner.
+
+### Where it's weakest
+
+Two honest caveats:
+
+1. **Memory safety (kernels, codecs, crypto-lib internals).** Soundcheck's
+   new `memory-api-misuse` and `crypto-library-misuse` skills catch
+   local patterns (unchecked `malloc`, AEAD nonce reuse). Whole-program
+   lifetime analysis isn't soundcheck's strength — ASAN/UBSAN/Valgrind,
+   fuzzers (libFuzzer, OSS-Fuzz), and static analyzers (`clang-tidy`,
+   CodeQL) own that territory. Run those alongside soundcheck on C/C++
+   codebases.
+2. **`contract-review` is hypothesis-grade.** It surfaces *candidates*
+   to read carefully, not confirmed CVEs. In our testing, building real
+   PoCs for findings produced a meaningful false-positive rate — some
+   findings described real code patterns but the exploit chain broke at
+   a downstream check the audit hadn't traced. Treat each finding as
+   "investigate before filing." Full numbers in
+   [`docs/contract-review.md`](docs/contract-review.md).
+
+Reproduce any of this with:
+- `python scripts/smoke-test-skills.py` — paired, ~2h on haiku
+- `python scripts/benchmark-securityeval.py --with-bare`
+- `python scripts/benchmark-realworld.py`
+- `python scripts/benchmark-contract-review.py` — ~$60, ~2h
+
+---
+
+## Configuration
+
+### Optional: reinforce triggers in your `CLAUDE.md`
+
+If you want triggers to apply across all projects (not just ones with
+the plugin loaded), add this to `~/.claude/CLAUDE.md`:
+
+```markdown
+## Security
+
+When writing code, always invoke the soundcheck plugin skills for any
+code involving: authentication, authorization, cryptography, SQL/shell/
+template construction, error handling, logging, deserialization, LLM
+API calls, or agent workflows.
+```
 
 ### Non-Anthropic providers (Bedrock, Vertex)
 
-Soundcheck shells out to `claude -p --model <X>`, so whatever model string
-the `claude` CLI accepts, Soundcheck accepts. For AWS Bedrock or Google
-Vertex, the model argument alone isn't enough — the CLI needs
-provider-selection env vars before it will route the call correctly:
+Soundcheck shells out to `claude -p --model <X>`, so any model string
+the `claude` CLI accepts works. For Bedrock or Vertex the model alone
+isn't enough — set the provider-selection env vars first:
 
 ```bash
 # Bedrock
@@ -191,46 +267,17 @@ export CLOUD_ML_REGION=us-east5
 export ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project
 ```
 
-Without those env vars, `claude -p --model <ARN>` will hang or silently fail
-and Soundcheck will surface a timeout. The script runs a short preflight
-call before the real review to catch this class of misconfiguration fast.
+Without those env vars, `claude -p --model <ARN>` will hang or silently
+fail and Soundcheck will surface a timeout. The script runs a short
+preflight call before the real review to catch this fast.
 
 ---
 
-## Install
+## Trigger reference
 
-```bash
-claude plugin marketplace add thejefflarson/soundcheck
-claude plugin install soundcheck
-```
-
-After installation, all 52 skills are active in every Claude Code session. Claude will
-automatically invoke the relevant skill whenever it detects vulnerable code patterns.
-
-**Try it without installing** (current session only):
-
-```bash
-claude --plugin-dir /path/to/soundcheck
-```
-
----
-
-## How it works
-
-Each skill has a `description` field that tells Claude when to invoke it. When you ask
-Claude to write code matching that description, Claude:
-
-1. Invokes the skill automatically (visible in tool use)
-2. Rewrites the vulnerable section with a secure alternative
-3. Explains what was wrong and what the fix establishes
-4. Continues with your original task
-
-You do not need to ask Claude to check for security issues. Soundcheck runs in the
-background on every relevant code-writing task.
-
----
-
-## Trigger Reference
+The 52 skills auto-invoke based on patterns in their `description`
+frontmatter. You do *not* have to ask Claude to run them — they fire
+whenever the code Claude is about to write matches.
 
 | Code pattern | Skill invoked | OWASP |
 |---|---|---|
@@ -276,29 +323,19 @@ background on every relevant code-writing task.
 | GraphQL schemas without depth limits, introspection in production | `graphql-security` | CWE-400 |
 | MongoDB/NoSQL queries with user input, operator injection | `nosql-injection` | CWE-943 |
 | User input in HTTP response headers, CRLF injection | `header-injection` | CWE-113 |
+| `malloc`/`free`/`pthread_*` misuse, missing return checks, double-free, fd leak across exec | `memory-api-misuse` | CWE-690 |
+| AEAD nonce reuse, ECDSA k reuse, length-extension, padding-oracle exception leakage | `crypto-library-misuse` | CWE-323 |
+| SUID drop, PATH/IFS/LD_* trust, temp-file races, symlink-follow on /tmp | `privilege-handling` | CWE-271 |
+| Lock held across IO/await, lock ordering, atomic memory order, double-checked locking | `concurrency-correctness` | CWE-833 |
+| Untrusted integer flows into length/index/auth comparison without bounds | `numeric-trust-boundary` | CWE-190 |
 
-### On-Demand
+### On-demand commands
 
 | Command | What it does |
 |---|---|
-| `/pr-review` | Fast Critical/High gate over the files changed in your branch — usually run by the [GitHub Action](https://github.com/thejefflarson/soundcheck-action), not by hand |
+| `/pr-review` | Fast Critical/High gate over changed files — usually run by the [GitHub Action](https://github.com/thejefflarson/soundcheck-action), not by hand |
 | `/security-review` | Full OWASP sweep — subagent pipeline with threat model, hotspot mapping, parallel auditors, design review, attack-chain analysis |
-| `/contract-review` | Deep audit that reads each public function alongside every caller and flags places where the body delivers less than the callers expect |
-
----
-
-## Optional: Reinforce triggers in your CLAUDE.md
-
-Add this snippet to `~/.claude/CLAUDE.md` if you want to make the triggers explicit for
-all projects, not just those with the plugin:
-
-```markdown
-## Security
-
-When writing code, always invoke the soundcheck plugin skills for any code involving:
-authentication, authorization, cryptography, SQL/shell/template construction, error
-handling, logging, deserialization, LLM API calls, or agent workflows.
-```
+| `/contract-review` | Deep audit reading each public function alongside its callers, flagging caller/callee invariant gaps |
 
 ---
 
@@ -308,7 +345,7 @@ handling, logging, deserialization, LLM API calls, or agent workflows.
 2. Copy `docs/skill-template.md` to `.claude/skills/<name>/SKILL.md`
 3. Fill in all fields — no TODO placeholders
 4. Add a test case to `docs/test-cases/<name>.<ext>`
-5. Run the static validator — must pass with no violations:
+5. Run the static validator — must pass:
    ```bash
    python scripts/validate-skills.py --skill <name>
    ```
@@ -317,110 +354,29 @@ handling, logging, deserialization, LLM API calls, or agent workflows.
    python scripts/smoke-test-skills.py --skill <name> --verbose
    ```
 
-Skills must be under 600 words, include CWE references, and have a concrete runnable
-code rewrite in the "Fix immediately" section (or `## Procedure` for analysis skills).
-Test cases should cover multiple languages where the vulnerable API differs.
-See `docs/test-case-audit.md` for the current audit status.
+Skills must be under 600 words, include CWE references, and have a
+concrete runnable code rewrite in `Fix immediately` (or `Procedure`
+for analysis/orchestrator skills). Test cases should cover multiple
+languages where the vulnerable API differs. Audit status in
+`docs/test-case-audit.md`.
 
 ## Nominating a new threat
 
-The threat landscape moves faster than OWASP's publication cycle. To nominate an
-emerging threat for Soundcheck coverage:
+The threat landscape moves faster than OWASP's publication cycle. To
+nominate an emerging threat:
 
-1. Open a GitHub Issue using the **[Threat Nomination](.github/ISSUE_TEMPLATE/threat-nomination.md)** template
+1. Open a GitHub Issue using the
+   **[Threat Nomination](.github/ISSUE_TEMPLATE/threat-nomination.md)**
+   template
 2. Include at least one real-world source (CVE, writeup, or incident)
-3. Paste a short code snippet showing the vulnerable pattern — if you can't show code, the threat may not be detectable yet
+3. Paste a short code snippet showing the vulnerable pattern — if you
+   can't show code, the threat may not be detectable yet
 
-Nominations are auto-labeled `threat-candidate` and reviewed each quarter. The full
-backlog lives in [`docs/threat-radar.md`](docs/threat-radar.md), which tracks 14+
-threats across four status tiers: `watching`, `candidate`, `in-progress`, and `shipped`.
-
----
-
-## Does it actually work?
-
-Short answer: yes, reliably. Here's how we know.
-
-### Head-to-head test
-
-We have 130 deliberately broken code fixtures — things like a Flask login route
-with hardcoded passwords, a SQL query built by string concatenation, a file upload
-endpoint with no size limit. Each fixture has a checklist of what a thorough
-security review should catch and fix.
-
-For every fixture, we ask Claude to review it two ways: once with Soundcheck
-loaded, once with just a generic "be a security reviewer" prompt. A second Claude
-call, the judge, scores both reviews against the checklist. "Full pass" means
-every checklist item is satisfied.
-
-| Model | With Soundcheck | Plain Claude | Difference |
-|---|---|---|---|
-| Haiku (fast/cheap) | **77%** full-pass | 40% | **+37 points** |
-| Sonnet (slower/better) | **90%** full-pass | 58% | **+32 points** |
-
-When the two reviews disagree on a fixture, Soundcheck wins roughly **6 times out
-of 7**. The size of the gap is similar across both model strengths, so this isn't
-"Soundcheck only helps weak models" — loading the plugin raises the floor at every
-tier we tested.
-
-### External validation
-
-Smoke-test fixtures are written by us, so the result above could in principle
-favor patterns we had in mind. Two independent checks:
-
-**[SecurityEval](https://github.com/s2e-lab/SecurityEval)** — 104 vulnerable Python
-samples published by academic security researchers with ground-truth CWE labels.
-Both arms scored **100% detection and 100% fix** here. These snippets are obvious
-enough that plain Claude already catches everything, so this benchmark can't
-discriminate further — but it confirms Soundcheck doesn't *break* anything on
-external code it wasn't designed against.
-
-**Real OWASP projects** — 13 vulnerable files pinned from OWASP Juice Shop
-(TypeScript) and OWASP PyGoat (Python), covering SQL injection, broken access
-control, SSRF, path traversal, weak crypto, unsafe deserialization, and auth.
-Soundcheck caught and fully fixed **12 of 13 (92%)**, with 100% detection across
-all 13. The one miss — an open-redirect in Juice Shop's `redirect.ts` — was
-detected but only partially fixed.
-
-### How long does a review take?
-
-Running Soundcheck's full three-stage review pipeline (hotspot map → threat
-model → security review) against four open-source projects at pinned commits
-(`scripts/benchmark-eval.py`):
-
-| Repo | Language | Haiku | Sonnet |
-|---|---|---|---|
-| [redash](https://github.com/getredash/redash) | Python | **6.1 min** | 17.3 min |
-| [gitea](https://github.com/go-gitea/gitea) | Go | **6.2 min** | 6.6 min + timeout on security-review* |
-| [cal.com](https://github.com/calcom/cal.com) | TypeScript | **8.7 min** | 25.7 min |
-| [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **5.7 min** | 14.7 min |
-| **Totals** | | **26.6 min review / 52.5 min wall** | **64.3 min review / 111.9 min wall** |
-
-\* Sonnet's full-audit security-review on gitea exceeded the 20-minute
-per-call timeout. Haiku completed gitea in 2 minutes. Sonnet is the better
-auditor when it finishes but cal.com and gitea push the limits of a single
-review call — for those codebases, the PR-scoped `--diff-base` mode (which
-only reviews changed files) is the practical option.
-
-Practical guidance:
-
-- **Haiku is fast enough for PR-gate use** — typical diff-scoped reviews
-  complete in 1–2 minutes. Full-repo audits average ~7 minutes per repo.
-- **Sonnet is for monthly/quarterly deep scans** — higher-quality findings
-  but 3–4× the time per call, and hits timeouts on the largest codebases.
-- **Soundcheck itself doesn't add review latency.** On the SecurityEval
-  paired run we measured plugin-loaded reviews at 15.2s median vs plain
-  Claude at 17.7s median — the skill's narrower focus finishes slightly
-  faster, not slower.
-
-### Details for the curious
-
-- Statistical test (Wilcoxon signed-rank on per-fixture score differences):
-  p < 1e-6 on haiku, p < 1e-4 on sonnet. Methodology in
-  [`docs/smoke-test-methodology.md`](docs/smoke-test-methodology.md).
-- Reproduce with `python scripts/smoke-test-skills.py` (paired, ~2h on haiku)
-  or `python scripts/benchmark-securityeval.py --with-bare` / `python
-  scripts/benchmark-realworld.py` for the external runs.
+Nominations are auto-labeled `threat-candidate` and reviewed quarterly.
+The backlog lives in
+[`docs/threat-radar.md`](docs/threat-radar.md), which tracks 14+
+threats across `watching`, `candidate`, `in-progress`, and `shipped`
+tiers.
 
 ---
 
