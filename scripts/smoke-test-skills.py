@@ -122,12 +122,12 @@ def find_test_cases(skill_name: str) -> list[Path]:
 
 def find_all_skills() -> list[str]:
     skills_dir = ROOT / ".claude" / "skills"
-    # security-review is an orchestrator skill that dispatches subagents
-    # via the Agent tool. The per-fixture smoke arm runs with
-    # disable_tools=True (no Agent tool), so the orchestrator can't
-    # actually run — its end-to-end behavior is covered by benchmark-eval
-    # and the GitHub Action self-test instead.
-    skip = {"security-review"}
+    # Orchestrator skills can't run under disable_tools=True. security-review
+    # and contract-review dispatch subagents via Agent; pr-review delegates
+    # to other skills' descriptions (which aren't visible in the system
+    # prompt). End-to-end behavior is covered by benchmark-eval,
+    # benchmark-contract-review, and the GitHub Action self-test instead.
+    skip = {"security-review", "contract-review", "pr-review"}
     return sorted(
         p.name for p in skills_dir.iterdir()
         if (p / "SKILL.md").exists() and p.name not in skip
