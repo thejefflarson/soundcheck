@@ -125,8 +125,9 @@ hotspot_coverage.hotspots_addressed/hotspot_coverage.hotspots_total>=0.5)."""
 JUDGE_PROMPT_HOTSPOTS = """\
 A hotspots analysis was run on the {repo_id} repository ({lang}).
 
-RESPONSE:
+<response>
 {response}
+</response>
 
 Evaluate:
 
@@ -152,8 +153,9 @@ A threat model was produced for the {repo_id} repository ({lang}). It is
 pure context — purpose, deployment, trusted_inputs, untrusted_inputs —
 rendered as a Markdown report for a human reader. Not a findings report.
 
-RESPONSE:
+<response>
 {response}
+</response>
 
 Evaluate:
 
@@ -187,11 +189,13 @@ A security review was run on the {repo_id} repository ({lang}). A hotspots
 analysis for the same repo is included below as dynamic ground truth of where
 the review *should* have looked.
 
-HOTSPOTS ANALYSIS (ground truth):
+<hotspots>
 {hotspots_response}
+</hotspots>
 
-SECURITY REVIEW RESPONSE:
+<response>
 {response}
+</response>
 
 Evaluate:
 
@@ -260,11 +264,16 @@ def clone_repo(repo_id: str, repo_url: str) -> Path:
     repo_dir = repos_dir / repo_id
 
     if repo_dir.exists():
-        print(f"  Using cached clone: {repo_dir}")
         subprocess.run(
             ["git", "-C", str(repo_dir), "pull", "--ff-only", "-q"],
             capture_output=True,
         )
+        sha_res = subprocess.run(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            capture_output=True, text=True,
+        )
+        sha = sha_res.stdout.strip()[:12] if sha_res.returncode == 0 else "unknown"
+        print(f"  Using cached clone: {repo_dir} (HEAD={sha})")
         return repo_dir
 
     url = f"https://github.com/{repo_url}.git"
@@ -276,7 +285,14 @@ def clone_repo(repo_id: str, repo_url: str) -> Path:
     if result.returncode != 0:
         print(f"FAILED\n  {result.stderr.strip()}")
         return repo_dir
-    print("done")
+    # Record the exact commit SHA so the clone is auditable.  Pin REPO_MANIFEST
+    # entries to a specific SHA to prevent force-push injection (supply-chain).
+    sha_res = subprocess.run(
+        ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+        capture_output=True, text=True,
+    )
+    sha = sha_res.stdout.strip()[:12] if sha_res.returncode == 0 else "unknown"
+    print(f"done (HEAD={sha})")
     return repo_dir
 
 
@@ -296,6 +312,57 @@ def fmt_duration(seconds: float) -> str:
     if seconds < 60:
         return f"{seconds:.0f}s"
     return f"{seconds / 60:.1f}m"
+
+
+# ---------------------------------------------------------------------------
+# Security helpers — prompt sanitisation, output validation, scrubbing
+# ---------------------------------------------------------------------------
+
+# Max chars of untrusted LLM content embedded in judge prompts (finding: prompt injection).
+_MAX_RESPONSE_CHARS = 50_000
+# Max chars of raw judge reply accepted by json.loads (finding: insecure-output-handling).
+_MAX_JUDGE_JSON_CHARS = 100_000
+# Required fields and expected Python types in a valid judge JSON response.
+_JUDGE_REQUIRED: dict[str, type] = {"passed": bool, "verdict": str, "clarity": int}
+
+
+def _sanitize_for_prompt(text: str, max_chars: int = _MAX_RESPONSE_CHARS) -> str:
+    """Cap length and escape brace literals in untrusted LLM content before str.format().
+
+    str.format() treats every { } pair as a placeholder; brace literals in
+    scanned-repo review responses would raise KeyError or silently consume
+    unintended arguments.  Escaping them first makes the content inert.
+    """
+    return text[:max_chars].replace("{", "{{").replace("}", "}}")
+
+
+def _scrub_verbose(text: str, max_chars: int = 2000) -> str:
+    """Redact long opaque strings that look like secrets before printing to stdout.
+
+    In --verbose mode review text from scanned repos is printed to stdout and
+    captured by CI log artifacts.  This best-effort pass redacts token-shaped
+    runs of characters (40+ chars from the base64/hex alphabet) before emission.
+    """
+    truncated = text[:max_chars]
+    return re.sub(r"[A-Za-z0-9+/=_\-]{40,}", "[REDACTED]", truncated)
+
+
+def _validate_judge(data: object) -> dict:
+    """Schema-check a parsed judge JSON object before it drives pass/fail.
+
+    An adversarially influenced judge response could omit required fields or
+    supply wrong types to silently flip the verdict.  Validate before use.
+    """
+    if not isinstance(data, dict):
+        return {"passed": False, "verdict": "judge response was not a JSON object"}
+    for field, typ in _JUDGE_REQUIRED.items():
+        val = data.get(field)
+        if val is None or not isinstance(val, typ):
+            return {
+                "passed": False,
+                "verdict": f"judge response missing or wrong-type field: {field!r}",
+            }
+    return data  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
@@ -357,13 +424,18 @@ def run_judge(
     review_response: str, hotspots_response: str | None,
 ) -> dict:
     template = JUDGE_PROMPTS[skill_name]
+    # Sanitize untrusted LLM content before embedding in format strings.
+    # Escaping braces prevents KeyError / silent argument consumption; the length
+    # cap prevents adversarially large review text from inflating the judge prompt.
     fmt_args = {
         "repo_id": repo_info["id"],
         "lang": repo_info["lang"],
-        "response": review_response,
+        "response": _sanitize_for_prompt(review_response),
     }
     if skill_name == "security-review":
-        fmt_args["hotspots_response"] = hotspots_response or "(not available)"
+        fmt_args["hotspots_response"] = _sanitize_for_prompt(
+            hotspots_response or "(not available)"
+        )
     prompt = template.format(**fmt_args)
 
     print(f"  Judging:        {skill_name} ({JUDGE_MODEL})...",
@@ -376,8 +448,14 @@ def run_judge(
     print(f"done ({fmt_duration(elapsed)})")
 
     try:
-        return json.loads(extract_json(judge_text))
-    except (json.JSONDecodeError, AttributeError):
+        raw_json = extract_json(judge_text)
+        # Size-bound before parsing (finding: insecure-output-handling).
+        if len(raw_json) > _MAX_JUDGE_JSON_CHARS:
+            return {"passed": False, "verdict": "judge response exceeded size limit"}
+        parsed = json.loads(raw_json)
+        # Schema-validate before driving pass/fail (finding: insecure-design, overreliance).
+        return _validate_judge(parsed)
+    except (json.JSONDecodeError, AttributeError, ValueError):
         return {"passed": False, "verdict": "judge produced invalid JSON"}
 
 
@@ -563,8 +641,10 @@ def main() -> int:
                     "judge": judge,
                 }
                 if args.verbose:
-                    print(f"\n--- Review ---\n{review_response[:2000]}")
-                    print(f"\n--- Judge ---\n{json.dumps(judge, indent=2)[:2000]}")
+                    # Scrub before printing — review text from scanned repos may
+                    # contain secrets/PII that would be captured by CI log artifacts.
+                    print(f"\n--- Review ---\n{_scrub_verbose(review_response)}")
+                    print(f"\n--- Judge ---\n{_scrub_verbose(json.dumps(judge, indent=2))}")
             except (RuntimeError, subprocess.TimeoutExpired) as exc:
                 print(f"  ERROR: {exc}")
                 result = {
