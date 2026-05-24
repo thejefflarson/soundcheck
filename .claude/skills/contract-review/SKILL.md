@@ -34,18 +34,10 @@ conversation context; thread it into every later subagent.
 
 ### Stage 1 — Hotspot seed
 
-Dispatch one `hotspot-mapping` subagent with `Focus:`:
-
-> Contract review. Emit two classes, in order:
-> (1) **Every public API entry point**, unconditionally — syscalls,
-> exported library symbols, HTTP/RPC handlers, CLI subcommands,
-> message-queue consumers. Their callers are outside the repo, so
-> caller-count is not a filter.
-> (2) **Internal helpers with ≥2 in-repo callers** on a
-> security-relevant path. Do not skip a function for looking routine.
-
-Drop the `skill` field from the response; you now have a hotspot
-list in conversation memory.
+Dispatch one `hotspot-mapping` subagent with the threat model JSON
+and no `Focus:` (full-repo scan). `hotspot-mapping` returns a list
+of `{file, lines, name, why}` entries — interesting functions to
+audit. Keep that list in conversation memory.
 
 ### Stage 2 — Round loop
 

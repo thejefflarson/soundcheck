@@ -109,26 +109,38 @@ numbered or labeled steps the agent follows to generate the required output.
 Include the full category identifier (e.g., `A01:2025`, `LLM08:2025`) in the skill title
 and in the References section.
 
-## Updating the Security Review Skill
+## Review pipeline shape
 
-`.claude/skills/security-review/SKILL.md` is a thin orchestrator that dispatches
-five subagents in `agents/`. The skill body names a **Skill catalog** —
-the set of per-category skill names auditors may emit. The catalog actually
-lives in `agents/hotspot-mapping.md` (the subagent that assigns each
-hotspot a skill). **When adding a new skill, add its name to that catalog
-list.** Hotspots that name a non-catalog skill are silently dropped.
+The review modes share a three-stage pipeline with discrete
+responsibilities. Both `security-review` and `contract-review`
+orchestrate the same first two stages and differ only in the
+per-hotspot review subagent they dispatch.
+
+| Stage | Subagent | Responsibility |
+|---|---|---|
+| 1. Threat model | `threat-modeling` | What the code does, where it runs, what's trusted, what's untrusted. Pure context — no file decisions. |
+| 2. Hotspots | `hotspot-mapping` | What files and functions are interesting given the threat model. Returns `{file, lines, name, why}`. No skill mapping, no mode flag. |
+| 3. Review | `vulnerability-audit` (security-review) / `contract-audit` (contract-review) | Where there are problems. Reads the hotspot's code and the relevant skill catalog; emits findings. |
+
+`security-review` adds two orthogonal layers around stage 3:
+`design-review` (parallel, operates on the whole repo + threat
+model, finds missing controls) and `attack-chain-analysis`
+(post-review, composes findings into chains).
+
+When adding a new auto-invoking skill, vulnerability-audit will
+pick it up automatically by reading the skill catalog in
+`.claude/skills/`. There is no separate catalog list to maintain.
 
 ## Subagents (`agents/`)
 
-The `/security-review` pipeline is split across five subagents per
-[Claude Code subagent best practices](https://code.claude.com/docs/en/sub-agents):
+Per [Claude Code subagent best practices](https://code.claude.com/docs/en/sub-agents):
 
-- `threat-modeling` — builds a threat model JSON (Stage 0).
-- `hotspot-mapping` — finds security-sensitive code locations (Stage 1).
-- `design-review` — finds missing controls (Stage 1b, parallel with Stage 2).
-- `vulnerability-audit` — audits a ≤5-hotspot chunk against the named skill
-  (Stage 2, dispatched N×).
-- `attack-chain-analysis` — composes findings into chains (Stage 3).
+- `threat-modeling` — pure context (Stage 1).
+- `hotspot-mapping` — interesting code locations (Stage 2).
+- `vulnerability-audit` — per-hotspot OWASP review for `security-review` (Stage 3).
+- `contract-audit` — per-hotspot caller/callee invariant review for `contract-review` (Stage 3).
+- `design-review` — missing-controls audit (security-review only, parallel layer).
+- `attack-chain-analysis` — chain composition (security-review only, post-review).
 
 **Reload caveat:** subagents are loaded at Claude Code session start. Editing a
 file in `agents/` requires a full session restart — `/reload-plugins`

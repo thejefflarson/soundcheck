@@ -133,7 +133,9 @@ story.
 
 - The two findings are in unrelated subsystems with no shared call
   path.
-- One of the findings is `out_of_scope` per the threat model.
+- One of the findings was emitted against code the threat model
+  marks as `trusted_inputs` (the bug exists but the threat model
+  says we don't worry about that source).
 - The "chain" is just "we have two bugs in the same file" — that's
   not a chain, those are two findings.
 - You can describe the chain in words but you can't actually trace

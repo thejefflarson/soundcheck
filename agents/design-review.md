@@ -35,24 +35,25 @@ These are the bugs you're hunting.
 ## Inputs
 
 The user message will include the threat model JSON produced by
-`threat-modeling`. Treat `attack_surface` and `out_of_scope` as
-authoritative.
+`threat-modeling` — `purpose`, `deployment`, `trusted_inputs`,
+`untrusted_inputs`. Use it as context.
 
 ## What to do
 
 1. **Read `.claude/skills/threat-model/SKILL.md`.** This is the
    canonical checklist of design-level controls Soundcheck tracks.
    Apply each checklist item to the codebase.
-2. **For every file in `attack_surface`,** ask: does it have the
-   defenses the threat-model checklist names? If not, emit a finding.
-3. **Look at config too, not just source.** Many missing controls are
-   in YAML/JSON — workflow permissions, CORS origins, cookie flags,
-   timeout values defaulting to "none".
-4. **Discount `out_of_scope`.** A local-only dev script doesn't need
-   the same defenses as a public API. A test fixture is allowed to
-   be vulnerable on purpose.
-5. **Trust `trusted_inputs`.** Don't emit findings about the
-   maintainer's own committed source treating itself as input.
+2. **Walk the untrusted-input surface.** For each entry in
+   `untrusted_inputs`, find the code that handles it and ask: does
+   it have the defenses the threat-model checklist names? If not,
+   emit a finding.
+3. **Look at config too, not just source.** Many missing controls
+   are in YAML/JSON — workflow permissions, CORS origins, cookie
+   flags, timeout values defaulting to "none".
+4. **Trust `trusted_inputs`.** Don't emit findings about the
+   maintainer's own committed source treating itself as input. If
+   `CLAUDE.md` documents that a category is out of scope ("we don't
+   worry about X because Y"), respect that.
 
 ## Severity guidance
 

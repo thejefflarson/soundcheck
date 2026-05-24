@@ -38,24 +38,22 @@ Copy this checklist as you progress:
 ### Stage 0 — Threat model
 
 Dispatch one `threat-modeling` subagent. It returns JSON describing
-purpose, deployment, trusted/untrusted inputs, attack surface, and
-out-of-scope. Thread this JSON into every later subagent.
+purpose, deployment, trusted_inputs, and untrusted_inputs. Thread
+this JSON into every later subagent as context.
 
 ### Stage 1 — Hotspot map (batched fan-out)
 
-**Glob `*/` and `*/*/`** to enumerate the top two directory levels
-of the whole repo — not just `attack_surface`, which Stage 0 often
-under-enumerates. Drop paths under `out_of_scope` and standard
-boilerplate (`node_modules`, `.venv`, `venv`, `dist`, `build`,
-`target`, `.git`, `vendor`, `__pycache__`, `.next`, `coverage`,
-`migrations`, `fixtures`, `tests`, `test`, `docs`). Dedupe. Don't
-filter by extension — language-agnostic.
+Glob `*/` and `*/*/` to enumerate the top two directory levels of
+the whole repo. Dedupe; don't filter by extension. Split into
+batches of **2 dirs each**.
 
-Split into batches of **2 dirs each**. **In a SINGLE message**,
-dispatch one `hotspot-mapping` per batch with the threat model JSON
-and `Focus: <comma-separated dirs>`. Smaller batches give each
-subagent narrow enough scope to actually read most files rather
-than sample. No cap; scales with repo size. Concatenate, dedupe by
+**In a SINGLE message**, dispatch one `hotspot-mapping` per batch
+with the threat model JSON and `Focus: <comma-separated dirs>`.
+`hotspot-mapping` knows the standard set of non-source directory
+patterns to skip; the orchestrator does not enforce its own skip
+list. Smaller batches give each subagent narrow enough scope to
+actually read most files rather than sample. No cap; scales with
+repo size. Concatenate the returned hotspot arrays, dedupe by
 `(file, lines)`.
 
 ### Stages 1b + 2 — Design review and vulnerability audit (parallel)
