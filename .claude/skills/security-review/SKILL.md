@@ -9,12 +9,21 @@ description: Runs a full OWASP/CWE security audit via isolated subagents. Use wh
 
 ## What this checks
 
-Full audit via isolated subagents. Main context shows only findings.
+Full repo audit against the OWASP Web Top 10:2025 + LLM Top 10:2025
+catalogs, run via a three-stage pipeline: threat-model → hotspots →
+review. Main context never reads code; it dispatches subagents
+(`threat-modeling`, `hotspot-mapping`, `vulnerability-audit`,
+`design-review`, `attack-chain-analysis`) and renders findings.
 
 ## Vulnerable patterns
 
-Delegates to the Soundcheck `vulnerability-audit` subagent, which
-applies the per-category skills (`injection`, `csrf`, `ssrf`, …).
+This skill is the orchestrator. The actual pattern catalog lives in
+the per-category auto-invoking skills (`injection`, `csrf`, `ssrf`,
+`broken-access-control`, `authentication-failures`, etc.) — the
+`vulnerability-audit` subagent picks the right one per hotspot and
+applies its `Vulnerable patterns` section. Skill-list maintenance
+is automatic via `.claude/skills/` directory contents; no separate
+catalog file.
 
 ## Procedure
 

@@ -87,14 +87,17 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: thejefflarson/soundcheck-action@ba406c301382211d66118ebcc699267745f7f849  # v2.1.2
+      - uses: thejefflarson/soundcheck-action@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+For supply-chain hardening, pin both actions to a specific commit SHA
+instead of the floating `@v1` tag — see [GitHub's hardening guide](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
 
 The action comments a severity-ranked findings table on the PR. Auto-fix
 (committing LLM-generated changes back to the branch) is **opt-in**: set

@@ -88,6 +88,46 @@ Issues are auto-labeled `threat-candidate` for triage at the next quarterly revi
 - **Sources:** Embrace The Red research (2025); multiple CTF demonstrations
 - **Added:** 2026-02-26
 
+### Memory API Misuse (systems-software)
+- **Status:** `shipped` (`.claude/skills/memory-api-misuse/`)
+- **OWASP:** CWE-690 / CWE-415 / CWE-401 / CWE-403
+- **Severity:** High
+- **Why code-detectable:** Function-local patterns — unchecked `malloc`/`mmap`/`realloc` returns, double-free on error paths, mutex used before init, fopen without `O_CLOEXEC`. Local pattern match; whole-program lifetime analysis explicitly out of scope (ASAN/Valgrind own that).
+- **Sources:** Mythos preview report's headline findings (memory-safety in OpenBSD/Linux/FreeBSD); CWE registry; LLM4 Decompile research
+- **Added:** 2026-05-23
+
+### Crypto Library Misuse (primitive wiring)
+- **Status:** `shipped` (`.claude/skills/crypto-library-misuse/`)
+- **OWASP:** CWE-323 / CWE-330 / CWE-208 / CWE-326
+- **Severity:** Critical
+- **Why code-detectable:** AEAD nonce reuse, ECDSA k reuse, length-extensible bare-hash MACs, padding-oracle exception distinguishability, non-constant-time MAC comparison. Distinct from `cryptographic-failures` (application-layer choices) — this is library-internal correctness.
+- **Sources:** CVE-2024-30171 (Marvin Attack on BC-java); Sony PS3 ECDSA k-reuse; ALPACA AEAD nonce confusion; multiple ECDH PoCs
+- **Added:** 2026-05-23
+
+### Privilege Handling in SUID / Daemons
+- **Status:** `shipped` (`.claude/skills/privilege-handling/`)
+- **OWASP:** CWE-271 / CWE-426 / CWE-377 / CWE-61
+- **Severity:** High
+- **Why code-detectable:** `setuid` drop-order, `PATH`/`LD_*`/`IFS` trust in privileged exec, `tmpnam` races, /tmp open without `O_NOFOLLOW`, missing umask. Local patterns at the call site; LSM (SELinux/AppArmor) is defense-in-depth.
+- **Sources:** Secure Programming for Linux and Unix HOWTO; classic SUID escalation literature; FreeBSD/sudo CVE history
+- **Added:** 2026-05-23
+
+### Concurrency Correctness (lock-around-IO, memory order, double-checked locking)
+- **Status:** `shipped` (`.claude/skills/concurrency-correctness/`)
+- **OWASP:** CWE-833 / CWE-820 / CWE-667 / CWE-362
+- **Severity:** High
+- **Why code-detectable:** Lock held across await/I/O, AB-BA lock-order, `memory_order_relaxed` where acquire/release is needed, broken double-checked locking. Local patterns; whole-program ownership analysis is for borrow-checker / lockdep.
+- **Sources:** Go race detector documentation; C++ memory model literature (Herlihy & Shavit); Java `volatile` / DCL hazards
+- **Added:** 2026-05-23
+
+### Numeric Trust Boundary (untrusted int → length/index/auth)
+- **Status:** `shipped` (`.claude/skills/numeric-trust-boundary/`)
+- **OWASP:** CWE-190 / CWE-194 / CWE-704 / CWE-20
+- **Severity:** Critical
+- **Why code-detectable:** Untrusted integer flows through conversion/cast/parser into length, size, index, or auth comparison without bounds-checking the post-conversion value. Sign-extension on `signed char` cast, `atoi`-returns-0 used as ID, width truncation in bounds check, multiplication wraparound.
+- **Sources:** Mythos preview (FFmpeg H.264 slice-count overflow); CWE registry; numerous CVE histories in image/video codecs and protocol parsers
+- **Added:** 2026-05-23
+
 ### OWASP Agentic AI Top 10 (December 2025)
 - **Status:** `watching`
 - **OWASP:** New publication

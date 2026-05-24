@@ -43,6 +43,13 @@ Track the quality of each skill's test case. Update this file as gaps are fixed.
 | multi-agent-trust | `.py` | ✅ | ✅ | ✅ | No subagent identity check, inherited permissions, unsanitized task passthrough |
 | token-smuggling | `.py` | ✅ | ✅ | ✅ | RTL override, homoglyph, zero-width chars in user-supplied prompt |
 | security-review | `.py` | n/a | n/a | n/a | On-demand skill; invoked via /security-review, not pattern-matched |
+| pr-review | `.py` | n/a | n/a | n/a | On-demand skill; invoked via /pr-review or `security-review-action.py --diff-base`, not pattern-matched |
+| contract-review | `.py` | n/a | n/a | n/a | On-demand skill; invoked via /contract-review or `contract-review.py`, not pattern-matched |
+| memory-api-misuse | `.c` | ✅ | ✅ | ✅ | 6 bugs: unchecked malloc, realloc-in-place leak, double-free on error path, mutex without init, fopen without O_CLOEXEC, mmap MAP_FAILED unchecked |
+| crypto-library-misuse | `.py` | ✅ | ✅ | ✅ | 5 bugs: static AEAD nonce, ECDSA caller-supplied k, length-extensible hash-MAC, non-constant-time MAC compare, exception-type distinguisher |
+| privilege-handling | `.c` | ✅ | ✅ | ✅ | 5 bugs: setuid drop-order, system() with PATH trust, tmpnam race, /tmp open without O_NOFOLLOW, missing umask |
+| concurrency-correctness | `.go` | ✅ | ✅ | ✅ | 5 bugs: lock held across HTTP I/O, AB-BA lock order, ready flag without sync, lock-then-sleep, unbuffered channel send under lock |
+| numeric-trust-boundary | `.c` | ✅ | ✅ | ✅ | 6 bugs: signed-char sign-extension, atoi-returns-0 as auth ID, width-truncated bounds check, multiplication wraparound, negative index, divide-by-zero |
 
 **Legend:** ✅ Pass  ⚠️ Needs attention  ❌ Failing
 
@@ -50,7 +57,10 @@ Track the quality of each skill's test case. Update this file as gaps are fixed.
 
 ## Open Gaps
 
-All gaps resolved as of 2026-03-18.
+Some older skills not yet entered in the table above (csrf, file-upload,
+ssrf, path-traversal, etc.) — their test cases pass the validator and
+the smoke test, but coverage rows haven't been written. Low-priority
+backfill.
 
 ---
 
@@ -61,3 +71,4 @@ All gaps resolved as of 2026-03-18.
 | 2025-02-25 | Initial audit | Identified 3 gaps; fixed injection.py eval() pattern |
 | 2026-02-26 | Update | Fixed all 3 gaps; added mcp-security, oauth-implementation, rag-security |
 | 2026-03-18 | Update | Added insecure-local-storage, ipc-security, multi-agent-trust, token-smuggling, security-review |
+| 2026-05-23 | Update | Added pr-review + contract-review orchestrators; added 5 systems-software skills (memory-api-misuse, crypto-library-misuse, privilege-handling, concurrency-correctness, numeric-trust-boundary) |

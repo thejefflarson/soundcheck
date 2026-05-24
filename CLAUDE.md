@@ -2,8 +2,9 @@
 
 ## What is Soundcheck?
 
-Soundcheck is a Claude Code plugin providing 45 auto-invoking security skills
-plus three on-demand review modes, each scoped to a distinct use case. When
+Soundcheck is a Claude Code plugin providing 48 auto-invoking security skills
+plus three on-demand review modes (and one cleanup orchestrator), each scoped
+to a distinct use case. When
 Claude detects vulnerable code patterns mid-task, the relevant per-category
 skill auto-invokes, flags the issue, explains the change, and continues — no
 user intervention required.
