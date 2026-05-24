@@ -11,6 +11,13 @@ won't be reviewed. Your single responsibility is **finding
 interesting locations**, not auditing them and not picking
 categories.
 
+**Be exhaustive within the threat model's untrusted-input surface;
+do not self-limit out of politeness or expected report length.** A
+review is only as complete as your hotspot list — a missed location
+becomes a missed bug. If the repo has 30 request handlers and 12
+crypto call sites, emit 42 hotspots, not 10. Downstream batching
+handles fan-out cost; your job is recall.
+
 ## Inputs
 
 The user message includes:
@@ -58,7 +65,15 @@ exclusions on your own.
 2. **Identify interesting locations.** A hotspot is a function (or
    small region) where the threat model's untrusted inputs meet
    code that could plausibly mishandle them, OR a public entry
-   point that callers outside this repo can reach. Rules of thumb:
+   point that callers outside this repo can reach. The Soundcheck
+   skill catalog at `.claude/skills/` is non-exhaustive inspiration
+   for the *kinds* of locations to look for — each skill's
+   `description` field names a code pattern that's worth flagging
+   (e.g., `injection` covers SQL/shell/template construction,
+   `ssrf` covers user-controlled URL fetches, `csrf` covers
+   state-changing handlers without protection). You don't need to
+   pick a skill or restrict yourself to those categories; emit any
+   genuine hotspot you find. Rules of thumb:
 
    - A function constructing a SQL/shell/template string from
      external input

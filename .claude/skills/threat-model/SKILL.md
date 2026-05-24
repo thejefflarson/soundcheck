@@ -1,76 +1,83 @@
 ---
 name: threat-model
-description: Surfaces missing security controls before implementation by applying a threat-
-  modeling checklist to a plan. Use when writing an implementation plan for a
-  new feature, API endpoint, data pipeline, or system component. Also invoke
-  when a plan introduces new trust boundaries, handles user-supplied data,
-  adds authentication flows, or integrates external services.
+description: Produces a threat model — purpose, deployment, trusted inputs, untrusted inputs — for a new feature or component before it's implemented. Use when writing an implementation plan for a new API endpoint, data pipeline, agent loop, or system component. Also invoke when a plan introduces new trust boundaries, handles user-supplied data, adds authentication flows, or integrates external services.
 ---
 
-# Threat Modeling Check (A06:2025)
+# Threat Model (A06:2025)
 
 ## What this checks
 
-Surfaces missing controls before implementation. Auth gaps, unprotected data flows,
-and absent rate limiting are cheaper to fix in a plan than in code.
+This skill produces the threat-model context a developer needs
+before writing the code: what is this thing, where will it run, what
+inputs do we trust, what inputs do we not. It does **not** emit
+findings or apply a checklist of "missing controls" — that's the
+developer's job once they have the context.
+
+Single source of truth: this skill delegates to the
+`threat-modeling` subagent in `agents/threat-modeling.md`. The
+subagent's JSON output is the canonical threat-model shape.
 
 ## Vulnerable patterns
 
-- API endpoint planned with no authentication or authorization
-- Data flow with PII or credentials and no encryption or access control
-- Multi-step workflow with no rate limiting, lockout, or abuse-prevention step
-- External service integration with no input validation, timeout, or error boundary
-- Irreversible action (send email, delete record, charge card) with no confirmation step
-- Security-relevant action (login, permission change, deletion) with no audit log step
-- Operation with unbounded resource cost and no timeout or circuit breaker
+This is an orchestrator skill. The agent it dispatches has no
+vulnerable-pattern catalog of its own — it produces context, and
+later auditors (`vulnerability-audit`, `design-review`,
+`contract-audit`) use that context to find code-level issues.
 
 ## Procedure
 
-Answer each question; add missing controls as explicit plan steps before continuing.
+Use the **Agent** tool to dispatch one `threat-modeling` subagent.
+Pass it the plan, spec, or codebase under discussion. The subagent
+returns a JSON object describing purpose, deployment, trusted
+inputs, and untrusted inputs.
 
-**Security design checklist:**
-
-```
-TRUST BOUNDARIES
-[ ] What inputs cross a trust boundary? Are they validated before use?
-[ ] Does any step pass user-supplied data to a database, shell, or template?
-
-DATA FLOWS
-[ ] Does any step persist or transmit PII, credentials, or secrets?
-[ ] Are those flows encrypted in transit and at rest?
-
-ACCESS CONTROL
-[ ] Does every new endpoint require authentication?
-[ ] Are permissions checked at the resource level, not just the route?
-
-ABUSE PREVENTION
-[ ] Does every user-facing endpoint have rate limits?
-[ ] Any irreversible action without a confirmation gate?
-
-REPUDIATION
-[ ] Are auth events, permission changes, and deletions logged with actor and timestamp?
-[ ] Are those logs write-only or tamper-evident?
-
-RESOURCE LIMITS
-[ ] Does each request have a compute or memory cost cap?
-[ ] Are expensive operations protected by timeouts and circuit breakers?
-
-EXTERNAL BOUNDARIES
-[ ] Are inputs from external services validated before use?
-[ ] Are timeouts and error responses defined for every external call?
+**Render that JSON as a Markdown report for the developer.** Do
+not show the raw JSON. The report shape:
 
 ```
+## Threat Model — <one-line summary derived from purpose>
+
+**Purpose.** <purpose>
+
+**Deployment.** <deployment>
+
+**Trusted inputs** (the maintainer controls these; auditors should
+not flag content originating here):
+
+- <category 1>
+- <category 2>
+- ...
+
+**Untrusted inputs** (cross a trust boundary; every one needs an
+explicit handling step in the plan — validation, rate limit,
+authentication, etc.):
+
+- <category 1>
+- <category 2>
+- ...
+
+---
+
+*Use this as the design checklist for what your plan must address.
+The skill produced context; deciding which controls to add is
+yours.*
+```
+
+The closing line is intentional — this skill does not enforce
+specific controls or emit findings. It surfaces the trust-boundary
+picture; the developer decides what to add (auth on new endpoints,
+rate limits on user-facing surface, validation on external-service
+responses, …).
 
 ## Verification
 
-Confirm:
-
-- [ ] Every new endpoint has explicit authentication and authorization
-- [ ] For every PII data flow identified as high-sensitivity (credentials, financial data, health data), an explicit encryption or tokenization step is present
-- [ ] Every user-facing endpoint has an explicit rate-limiting step
-- [ ] No irreversible action proceeds without a confirmation or approval step
-- [ ] Security-relevant actions are logged with actor and timestamp
-- [ ] Expensive operations have explicit cost caps, timeouts, or circuit breakers
+- [ ] One `threat-modeling` subagent was dispatched
+- [ ] Its JSON output is shown to the developer
+- [ ] The summary names `deployment` and the untrusted input
+      categories explicitly
+- [ ] No "missing controls" finding is emitted by this skill —
+      those belong to `design-review` (in security-review) or to
+      the developer's own follow-up
 
 ## References
 

@@ -67,11 +67,12 @@ REVIEW_PROMPTS = {
     ),
     "threat-model": (
         DISCOVERY_PREFIX
-        + "Evaluate the security design of the {repo_id} repository ({lang}). "
-        "Identify missing security controls using the STRIDE-based checklist: "
-        "trust boundaries, data flows, access control, abuse prevention, "
-        "repudiation, resource limits, and external boundaries. Reference "
-        "specific files and directories from the repository, not generic advice."
+        + "Produce a threat model for the {repo_id} repository ({lang}) by "
+        "following the threat-model skill (dispatches the threat-modeling "
+        "subagent for context, then renders a Markdown report). The report "
+        "names purpose, deployment, trusted_inputs, untrusted_inputs. Do "
+        "not emit findings or apply a checklist — context only, rendered "
+        "for a human reader."
     ),
     "security-review": (
         DISCOVERY_PREFIX
@@ -147,27 +148,37 @@ hotspot_coverage fields should be null (not applicable to this skill).
 """ + _COMMON_JUDGE_SCHEMA
 
 JUDGE_PROMPT_THREAT_MODEL = """\
-A threat model was produced for the {repo_id} repository ({lang}). This is a
-design review, not a code review — it identifies missing controls.
+A threat model was produced for the {repo_id} repository ({lang}). It is
+pure context — purpose, deployment, trusted_inputs, untrusted_inputs —
+rendered as a Markdown report for a human reader. Not a findings report.
 
 RESPONSE:
 {response}
 
 Evaluate:
 
-1. CLARITY (1-5): Are STRIDE categories covered (trust boundaries, data flows,
-   access control, abuse prevention, repudiation, resource limits, external
-   boundaries)? Are gaps specific and actionable? 5 = publication-quality.
+1. CLARITY (1-5): Is the response a Markdown report (not raw JSON)? Does
+   it name purpose, deployment, trusted_inputs, and untrusted_inputs in
+   clearly labeled sections? Is each category specific to this repo (not
+   generic platitudes)? Is the deployment classification correct given
+   the repo's structure? 5 = publication-quality report a developer can
+   read and act on.
 
-2. FINDING_VALIDITY: For EVERY claim that references a specific file or
-   directory (up to 30 max), use Glob/Read to confirm the path exists and
-   that the claim about what is (or isn't) there is accurate. A
-   threat-model claim like "no rate limiting on login" should be checkable
-   by reading the login handler. Do not sample. Report verified/checked.
+2. FINDING_VALIDITY: Treat each declared untrusted_inputs and trusted_inputs
+   category as a claim. For up to 30 of them, use Glob/Read to verify the
+   category is grounded in actual code (e.g., a claim of "HTTP request
+   bodies as untrusted" should be checkable against a handler file). Do
+   not sample. Report verified/checked.
 
-3. EARLY_EXIT: Count distinct top-level directories referenced. Pass if >= 3.
+3. EARLY_EXIT: Count distinct top-level directories referenced anywhere in
+   the response. Pass if >= 3 (the threat-model should at least name the
+   handler/auth/integration surfaces).
 
 hotspot_coverage fields should be null (not applicable).
+
+NOTE: This skill produces context, not findings. If the response includes
+"missing controls" / "fix this" recommendations, those are out of scope —
+mark them as not-claims and do not score them.
 
 """ + _COMMON_JUDGE_SCHEMA
 
