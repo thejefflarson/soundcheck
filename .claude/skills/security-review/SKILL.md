@@ -27,17 +27,17 @@ catalog file.
 
 ## Procedure
 
-Use the **Agent** tool plus **one** Glob call (for Stage 1 dir
-enumeration). **No Read/Grep/Bash in main context.** Stage prompts
-live in `agents/`: `threat-modeling`, `hotspot-mapping`,
-`design-review`, `vulnerability-audit`, `attack-chain-analysis`.
-This skill is just the coordinator.
+Use only the **Agent** tool in main context. **No Read/Grep/Glob/
+Bash in main context.** Stage prompts live in `agents/`:
+`threat-modeling`, `hotspot-mapping`, `design-review`,
+`vulnerability-audit`, `attack-chain-analysis`. This skill is just
+the coordinator.
 
 Copy this checklist as you progress:
 
 ```
 - [ ] Stage 0 — threat-modeling returned
-- [ ] Stage 1 — hotspot-mapping batches dispatched and returned
+- [ ] Stage 1 — hotspot-mapping returned (one whole-repo call)
 - [ ] Stages 1b+2 — design-review + N vulnerability-audit in ONE message
 - [ ] Stage 3 — attack-chain-analysis returned
 - [ ] Stage 4 — findings table rendered with severity legend
@@ -50,20 +50,12 @@ Dispatch one `threat-modeling` subagent. It returns JSON describing
 purpose, deployment, trusted_inputs, and untrusted_inputs. Thread
 this JSON into every later subagent as context.
 
-### Stage 1 — Hotspot map (batched fan-out)
+### Stage 1 — Hotspot map
 
-Glob `*/` and `*/*/` to enumerate the top two directory levels of
-the whole repo. Dedupe; don't filter by extension. Split into
-batches of **2 dirs each**.
-
-**In a SINGLE message**, dispatch one `hotspot-mapping` per batch
-with the threat model JSON and `Focus: <comma-separated dirs>`.
-`hotspot-mapping` knows the standard set of non-source directory
-patterns to skip; the orchestrator does not enforce its own skip
-list. Smaller batches give each subagent narrow enough scope to
-actually read most files rather than sample. No cap; scales with
-repo size. Concatenate the returned hotspot arrays, dedupe by
-`(file, lines)`.
+Dispatch **one** `hotspot-mapping` subagent with the threat model
+JSON. The subagent scans the whole repo and returns a JSON array
+of `{file, lines, name, category, priority, why}` entries. Use
+that array as the hotspot list for Stage 2.
 
 ### Stages 1b + 2 — Design review and vulnerability audit (parallel)
 

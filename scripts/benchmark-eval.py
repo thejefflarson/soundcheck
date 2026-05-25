@@ -103,27 +103,19 @@ Output JSON only:
   "clarity": <int 1-5>,
   "clarity_notes": "<one sentence>",
   "finding_validity": {{
-    "checked": <int, how many findings you opened files to verify>,
-    "verified": <int, how many matched the actual code>,
+    "checked": <int, how many rows/findings/claims you opened files to verify>,
+    "verified": <int, how many actually passed verification>,
     "notes": "<brief>"
   }},
-  "hotspot_coverage": {{
-    "hotspots_total": <int or null>,
-    "hotspots_addressed": <int or null>,
-    "notes": "<brief or null>"
-  }},
-  "early_exit_pass": <bool>,
-  "directories_covered": <int>,
   "verdict": "<1-2 sentences on why passed/failed>"
 }}
 
-Pass rule: passed=true iff clarity>=4 AND early_exit_pass AND (if
-finding_validity.checked>0 then verified/checked>=0.7) AND (if
-hotspot_coverage.hotspots_total is not null then
-hotspot_coverage.hotspots_addressed/hotspot_coverage.hotspots_total>=0.5)."""
+Pass rule: passed=true iff clarity>=4 AND (if
+finding_validity.checked>0 then verified/checked>=0.7)."""
 
 JUDGE_PROMPT_HOTSPOTS = """\
-A hotspots analysis was run on the {repo_id} repository ({lang}).
+A hotspots analysis was run on the {repo_id} repository ({lang}). The skill
+is supposed to identify code locations a security reviewer should look at.
 
 <response>
 {response}
@@ -132,19 +124,25 @@ A hotspots analysis was run on the {repo_id} repository ({lang}).
 Evaluate:
 
 1. CLARITY (1-5): Is a priority table present with Priority/Category/File/Lines
-   columns? Are rows actionable and specific? 5 = publication-quality, 1 =
-   unusable. Also check that an architecture summary precedes the table.
+   columns? Are rows specific (concrete file + line range, concrete one-line
+   "what")? 5 = publication-quality, 1 = unusable.
 
-2. FINDING_VALIDITY: For EVERY row in the priority table (up to 30 max —
-   if there are more, pick 30 representative rows across categories), use
-   Read on the cited file at the cited line range and confirm the code
-   matches the category. Do not sample — the goal is real precision, not
-   an estimate. Report verified/checked.
-
-3. EARLY_EXIT: Count distinct top-level directories referenced in the response.
-   Pass if >= 3.
-
-hotspot_coverage fields should be null (not applicable to this skill).
+2. FINDING_VALIDITY: For EVERY row in the table (up to 30 max — if there
+   are more, pick 30 across priorities and categories), use Read on the
+   cited file at the cited line range and judge whether that code is
+   actually a **security-interesting** location for a reviewer to look at.
+   A row passes if the cited code:
+     - handles untrusted input crossing a trust boundary, OR
+     - performs authentication/session/token logic, OR
+     - performs access-control or permission checks, OR
+     - calls crypto primitives or loads secrets, OR
+     - performs deserialization, dynamic file/path operations, or other
+       data-layer work on attacker-influenced bytes, OR
+     - calls external services/APIs/LLMs/payments with user-influenced data.
+   A row fails if the cited code is trivial (a getter, a struct definition,
+   a constant, dead code, a comment, an import block, pure formatting) or
+   if the cited lines don't actually contain code matching the row's
+   description. Don't sample. Report verified/checked.
 
 """ + _COMMON_JUDGE_SCHEMA
 
@@ -172,12 +170,6 @@ Evaluate:
    bodies as untrusted" should be checkable against a handler file). Do
    not sample. Report verified/checked.
 
-3. EARLY_EXIT: Count distinct top-level directories referenced anywhere in
-   the response. Pass if >= 3 (the threat-model should at least name the
-   handler/auth/integration surfaces).
-
-hotspot_coverage fields should be null (not applicable).
-
 NOTE: This skill produces context, not findings. If the response includes
 "missing controls" / "fix this" recommendations, those are out of scope —
 mark them as not-claims and do not score them.
@@ -185,13 +177,8 @@ mark them as not-claims and do not score them.
 """ + _COMMON_JUDGE_SCHEMA
 
 JUDGE_PROMPT_SECURITY_REVIEW = """\
-A security review was run on the {repo_id} repository ({lang}). A hotspots
-analysis for the same repo is included below as dynamic ground truth of where
-the review *should* have looked.
-
-<hotspots>
-{hotspots_response}
-</hotspots>
+A security review was run on the {repo_id} repository ({lang}). The skill
+is supposed to produce findings that a developer can act on.
 
 <response>
 {response}
@@ -200,23 +187,25 @@ the review *should* have looked.
 Evaluate:
 
 1. CLARITY (1-5): Is there a findings table with severity, file:line,
-   description, and recommended fix? Is each finding actionable? 5 =
-   publication-quality.
+   description, and recommended fix? Is each finding written in plain
+   language a non-security developer can act on without prior context?
+   5 = publication-quality.
 
-2. FINDING_VALIDITY: For EVERY finding in the review (up to 30 max), use
-   Read on the cited file at the cited line and confirm the vulnerable
-   pattern is actually present. Be strict — if the claim is
-   "timing-unsafe comparison" but the code uses
-   `crypto/subtle.ConstantTimeCompare`, it does not verify. Do not sample.
-   Report verified/checked.
-
-3. HOTSPOT_COVERAGE: Extract the Critical+High priority rows from the hotspots
-   analysis above. Count how many of those hotspot areas are addressed in the
-   security review (either with a finding or with an explicit "reviewed, no
-   issue"). Report hotspots_addressed/hotspots_total.
-
-4. EARLY_EXIT: Count distinct top-level directories referenced in the review.
-   Pass if >= 3.
+2. FINDING_VALIDITY: For EVERY finding (up to 30 max — if there are more,
+   pick 30 across severities), use Read on the cited file at the cited
+   line and judge whether the finding is **real AND actionable**:
+     - REAL: the described vulnerability is actually present at that
+       location. If the claim is "timing-unsafe comparison" but the code
+       uses `crypto/subtle.ConstantTimeCompare`, it is not real. If the
+       claim is "missing CSRF protection" but middleware in the same file
+       enforces it, it is not real.
+     - ACTIONABLE: the description names the specific weakness (not "this
+       code looks suspicious"), and the recommended fix gives a concrete
+       remediation (not "validate the input"). A developer who has not
+       seen this code should know what to change after reading the
+       finding.
+   A finding passes only if BOTH are satisfied. Don't sample. Report
+   verified/checked.
 
 """ + _COMMON_JUDGE_SCHEMA
 
@@ -388,11 +377,11 @@ def run_review(
     # attack-chain-analysis). Those live at <soundcheck>/agents/ but cwd
     # is the target repo, so we pass --plugin-dir pointing at the
     # soundcheck checkout to make them discoverable.
-    # security-review needs Glob in addition to Agent so the orchestrator
-    # can enumerate source directories before fanning out hotspot-mapping
-    # subagents. Read/Grep stay denied — the orchestrator still cannot
-    # inspect file contents in the main context.
-    allowed_tools = "Agent,Glob" if skill_name == "security-review" else None
+    # security-review is pure orchestration: one threat-modeling call, one
+    # hotspot-mapping call (whole-repo), then design-review + N
+    # vulnerability-audit chunks, then attack-chain-analysis. No main-context
+    # Read/Grep/Glob needed — every file touch happens inside a subagent.
+    allowed_tools = "Agent" if skill_name == "security-review" else None
     plugin_dir = ROOT if skill_name == "security-review" else None
     # The orchestrator fans out into 5+ subagent calls (one threat-model,
     # one hotspot map, 1b + N audit chunks, one attack-chain pass). All of
@@ -421,22 +410,14 @@ def run_review(
 
 def run_judge(
     skill_name: str, repo_info: dict, repo_dir: Path,
-    review_response: str, hotspots_response: str | None,
+    review_response: str,
 ) -> dict:
     template = JUDGE_PROMPTS[skill_name]
-    # Sanitize untrusted LLM content before embedding in format strings.
-    # Escaping braces prevents KeyError / silent argument consumption; the length
-    # cap prevents adversarially large review text from inflating the judge prompt.
-    fmt_args = {
-        "repo_id": repo_info["id"],
-        "lang": repo_info["lang"],
-        "response": _sanitize_for_prompt(review_response),
-    }
-    if skill_name == "security-review":
-        fmt_args["hotspots_response"] = _sanitize_for_prompt(
-            hotspots_response or "(not available)"
-        )
-    prompt = template.format(**fmt_args)
+    prompt = template.format(
+        repo_id=repo_info["id"],
+        lang=repo_info["lang"],
+        response=_sanitize_for_prompt(review_response),
+    )
 
     print(f"  Judging:        {skill_name} ({JUDGE_MODEL})...",
           end=" ", flush=True)
@@ -475,21 +456,13 @@ def print_result(result: dict) -> None:
     fv = judge.get("finding_validity", {})
     verified = fv.get("verified", 0)
     checked = fv.get("checked", 0)
-    hc = judge.get("hotspot_coverage", {})
-    hc_add = hc.get("hotspots_addressed")
-    hc_total = hc.get("hotspots_total")
-    dirs = judge.get("directories_covered", "?")
     review_time = fmt_duration(result["review_time"])
 
-    line = (
+    print(
         f"  {status:<4} clarity {clarity}/5  "
-        f"findings {verified}/{checked}  "
-        f"dirs {dirs}  "
+        f"validity {verified}/{checked}  "
         f"review {review_time}"
     )
-    if hc_total:
-        line += f"  hotspot_cov {hc_add}/{hc_total}"
-    print(line)
 
     if not judge.get("passed"):
         verdict = judge.get("verdict", "")
@@ -585,12 +558,6 @@ def main() -> int:
             print(f"Available: {SKILLS}")
             return 1
         skills = [args.skill]
-        # security-review's judge compares findings against the hotspots
-        # output for the coverage gate. If only security-review is
-        # selected, also run hotspots as a reference (skill list preserves
-        # order so hotspots runs first).
-        if args.skill == "security-review":
-            skills = ["hotspots", "security-review"]
 
     total = len(repos) * len(skills)
     print(f"\nSoundcheck Eval Benchmark — {len(repos)} repo(s) x "
@@ -619,20 +586,14 @@ def main() -> int:
                 })
             continue
 
-        hotspots_response: str | None = None
-
         for skill_name in skills:
             print(f"\n  {repo_id} x {skill_name}")
             try:
                 review_response, review_time = run_review(
                     skill_name, repo_info, repo_dir, args.model,
                 )
-                if skill_name == "hotspots":
-                    hotspots_response = review_response
-
                 judge = run_judge(
-                    skill_name, repo_info, repo_dir,
-                    review_response, hotspots_response,
+                    skill_name, repo_info, repo_dir, review_response,
                 )
                 result = {
                     "repo": repo_id,

@@ -11,69 +11,75 @@ description: Maps security-sensitive code locations in a codebase to focus revie
 
 ## What this checks
 
-Maps security-sensitive code so reviewers know where to focus. Missed hotspots mean
-entire attack surfaces go unreviewed.
+Maps security-sensitive code so reviewers know where to focus.
+Missed hotspots mean entire attack surfaces go unreviewed.
+
+Single source of truth: this skill delegates to the
+`hotspot-mapping` subagent in `agents/hotspot-mapping.md`. The
+subagent's JSON output is the canonical hotspot shape; this skill
+adds an architecture summary and renders the result as a priority
+table.
 
 ## Vulnerable patterns
 
-This skill does not target a single antipattern — it identifies areas where
-vulnerabilities are statistically most likely:
-
-- Route/endpoint handlers accepting external input
-- Authentication, session, and credential management code
-- Authorization and role-checking middleware
-- Database queries and ORM calls
-- File I/O with user-influenced paths
-- Cryptographic operations and secret loading
-- Serialization/deserialization of untrusted data
-- HTTP client calls to third-party services
+This skill does not target a single antipattern — the
+`hotspot-mapping` subagent identifies areas where vulnerabilities
+are statistically most likely (trust boundaries, auth/sessions,
+access control, data layer, crypto/secrets, external calls). See
+the agent's category taxonomy for the full list.
 
 ## Procedure
 
-**Step 1 — Architecture summary.** Read `README*`, `ARCHITECTURE*`, `docs/`,
-`SECURITY*`, and `CONTRIBUTING*`. Produce a 3–6 bullet summary: what the system
-does, major components, trust boundaries, auth model, data stores, external
-integrations. Without this framing you cannot tell a critical boundary from a
-helper.
+**Step 1 — Architecture summary.** Read `README*`, `ARCHITECTURE*`,
+`docs/`, `SECURITY*`, and `CONTRIBUTING*`. Produce a 3-6 bullet
+summary: what the system does, major components, trust boundaries,
+auth model, data stores, external integrations. Without this
+framing the table below is just a list of files.
 
-**Step 2 — Hotspot scan.** Skip `node_modules/`, `.venv/`, `dist/`, `build/`,
-`target/`.
+**Step 2 — Dispatch the subagent.** Use the **Agent** tool to
+dispatch one `hotspot-mapping` subagent. Pass it the architecture
+summary as context. The subagent returns a JSON array of hotspots,
+each with `file`, `lines`, `name`, `category`, `priority`, `why`.
 
-**For each file, look for:**
+**Step 3 — Render.** Display the architecture summary, then the
+hotspots as a Markdown priority table. Sort rows by priority
+(Critical → High → Medium), then by category, then by file. Do
+not show the raw JSON.
+
+Report shape:
 
 ```
-TRUST BOUNDARIES — route handlers, CLI arg parsing, file upload
-  endpoints, WebSocket/SSE handlers, IPC listeners
-AUTH & SESSIONS — login/logout, signup, password reset, JWT
-  creation/validation, OAuth callbacks, API key checks
-ACCESS CONTROL — role/permission checks, object-level lookups by ID
-DATA LAYER — SQL/ORM queries, deserialization (pickle, YAML, marshal),
-  file read/write with dynamic paths
-CRYPTO & SECRETS — encrypt/decrypt, hashing, key generation, TLS
-  config, secret loading from env/vault/config
-EXTERNAL CALLS — HTTP clients, LLM API calls, email/SMS/payment,
-  cloud SDK usage
-```
+## Architecture summary
 
-**Output format:**
+- <bullet 1>
+- <bullet 2>
+- ...
+
+## Hotspots
 
 | Priority | Category | File | Lines | What |
 |----------|----------|------|-------|------|
+| Critical | AUTH & SESSIONS | src/auth/oauth.py | 60-72 | reads redirect_uri from OAuth response without validating against the registered callback list |
+| Critical | DATA LAYER | src/api/handlers/users.py | 42-58 | concatenates request.args['q'] into a raw SQL LIKE clause |
+| ...
 
-Priority: **Critical** (auth, crypto, direct user input), **High** (access control,
-data persistence), **Medium** (logging, external calls, config).
+---
 
-After producing the table, recommend which Soundcheck skills to run against each
-hotspot category.
+*Run the matching auto-invoking skill against each hotspot, or
+launch `/security-review` for a full audit.*
+```
 
 ## Verification
 
-- [ ] Architecture summary produced from available documentation
-- [ ] All route/endpoint entry points identified
-- [ ] Authentication and authorization code located
-- [ ] Database and file I/O hotspots listed
-- [ ] Crypto and secret-handling code flagged
-- [ ] Output table produced with priorities and line ranges
+- [ ] One `hotspot-mapping` subagent was dispatched
+- [ ] Architecture summary precedes the table (3-6 bullets from
+      the repo's own documentation)
+- [ ] Output table has `Priority | Category | File | Lines | What`
+      columns
+- [ ] Rows are sorted by priority (Critical first)
+- [ ] At least one hotspot in each broad category present in the
+      repo (auth, data layer, etc.) is represented — recall matters
+      more than padding
 
 ## References
 

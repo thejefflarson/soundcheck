@@ -34,10 +34,11 @@ conversation context; thread it into every later subagent.
 
 ### Stage 1 — Hotspot seed
 
-Dispatch one `hotspot-mapping` subagent with the threat model JSON
-and no `Focus:` (full-repo scan). `hotspot-mapping` returns a list
-of `{file, lines, name, why}` entries — interesting functions to
-audit. Keep that list in conversation memory.
+Dispatch one `hotspot-mapping` subagent with the threat model
+JSON. It scans the whole repo and returns a list of
+`{file, lines, name, category, priority, why}` entries —
+interesting functions to audit. Keep that list in conversation
+memory.
 
 ### Stage 2 — Round loop
 

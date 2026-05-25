@@ -71,13 +71,16 @@ responses, …).
 
 ## Verification
 
-- [ ] One `threat-modeling` subagent was dispatched
-- [ ] Its JSON output is shown to the developer
-- [ ] The summary names `deployment` and the untrusted input
-      categories explicitly
-- [ ] No "missing controls" finding is emitted by this skill —
-      those belong to `design-review` (in security-review) or to
-      the developer's own follow-up
+- [ ] Output is a Markdown report (not raw JSON) with a `## Threat
+      Model` heading
+- [ ] **Purpose**, **Deployment**, **Trusted inputs**, and
+      **Untrusted inputs** are each present as labeled sections
+- [ ] Trusted-input and untrusted-input categories are listed
+      explicitly (one bullet per category)
+- [ ] The report describes the system; it does NOT list "missing
+      controls", recommend specific mitigations, or emit findings —
+      that work belongs to `design-review` or to the developer's
+      own follow-up
 
 ## References
 
