@@ -5,9 +5,6 @@ authentication, cryptography, access control, LLM-specific threats, and
 more — drawn from OWASP, CWE, and real-world vulnerability patterns.
 Skills auto-invoke when Claude writes vulnerable code, flag the issue,
 explain the fix, and continue with your original task.
-
-No configuration needed. No user intervention required.
-
 ---
 
 ## Install
@@ -95,9 +92,6 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
-
-For supply-chain hardening, pin both actions to a specific commit SHA
-instead of the floating `@v1` tag — see [GitHub's hardening guide](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
 
 The action comments a severity-ranked findings table on the PR. Auto-fix
 (committing LLM-generated changes back to the branch) is **opt-in**: set
