@@ -5,6 +5,7 @@ authentication, cryptography, access control, LLM-specific threats, and
 more — drawn from OWASP, CWE, and real-world vulnerability patterns.
 Skills auto-invoke when Claude writes vulnerable code, flag the issue,
 explain the fix, and continue with your original task.
+
 ---
 
 ## Install
