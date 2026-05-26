@@ -28,9 +28,9 @@ claude --plugin-dir /path/to/soundcheck
 
 ### Day to day: skills auto-invoke while Claude writes code
 
-You don't run anything. When Claude writes code that matches a skill's
-trigger description, the skill invokes automatically, flags the
-vulnerability, and rewrites the section with a secure alternative. You'll
+When Claude writes code that matches a skill's
+trigger description, the skill should invoke automatically, it will flag the
+vulnerabilities, and rewrite the code with a safe alternative. You'll
 see the skill name in the tool-use stream — for example:
 
 > *Invoking soundcheck:injection*
@@ -41,20 +41,19 @@ see the skill name in the tool-use stream — for example:
 The 52 skills cover roughly four families: web/API (OWASP Web Top 10),
 LLM/AI (OWASP LLM Top 10), API-specific (OWASP API Top 10), and
 systems-software (memory-API misuse, crypto-library wiring, privilege
-handling, concurrency, numeric trust-boundary). Trigger reference at the
-bottom of this doc.
+handling, concurrency, numeric trust-boundary). There's a complete reference at the
+bottom of this README.
 
 ### On demand: three review modes for existing code
 
 When you want to scan code that's already written — a PR diff, a whole
-repo before a release, or a deep audit before shipping — reach for one
-of these:
+repo before a release, or a deep audit before shipping — use one of the following skills:
 
 | Mode | When | Time | Cost | Catches |
 |---|---|---|---|---|
-| **`pr-review`** | Every pull request, in CI | ≤1 min | a few cents | Critical/High OWASP in the diff |
-| **`security-review`** | Nightly CI or monthly audit | ~20 min | ~$4 | All severities, whole repo, attack chains |
-| **`contract-review`** | Pre-release or after big refactor | ~30 min | ~$10–20 | Bugs where a function does less than callers assume |
+| **`/pr-review`** | Every pull request, in CI | ≤1 min | a few cents | Critical/High OWASP in the diff |
+| **`/security-review`** | Nightly CI or monthly audit | ~20 min | ~$4 | All severities, whole repo, attack chains |
+| **`/contract-review`** | Pre-release or after big refactor | ~30 min | ~$10–20 | Bugs where a function does less than callers assume |
 
 Rough rule of thumb: gate every PR on `pr-review`, schedule
 `security-review` nightly or weekly, and add `contract-review` on a
@@ -122,9 +121,6 @@ Or from a checkout:
 python scripts/security-review-action.py --repo-dir . --full-repo --model sonnet
 ```
 
-On large monorepos that exceed per-call limits, fall back to
-`--diff-base main` on a smaller branch.
-
 #### `contract-review` — deep audit for subtler bugs
 
 For caller/callee invariant gaps — the bug class where two functions
@@ -157,9 +153,9 @@ Short answer: yes, with calibrations per mode. Here's the evidence.
 
 ### Head-to-head against bare Claude (auto-invoking skills)
 
-130 deliberately broken fixtures — Flask login routes with hardcoded
+We test against 130 deliberately broken fixtures — Flask login routes with hardcoded
 passwords, SQL queries built from string concatenation, file uploads
-without size limits. Each has a checklist of what a thorough review
+without size limits. Each fixture has a checklist of what a thorough review
 should catch and fix. Claude reviews each fixture twice (with Soundcheck
 loaded, with a generic "be a security reviewer" prompt); a judge call
 scores both against the checklist. *Full pass* means every checklist
@@ -198,17 +194,15 @@ Two independent checks:
 
 ### Review times (full-repo pipeline)
 
-`scripts/benchmark-eval.py` against four open-source projects at pinned
+`scripts/benchmark-eval.py` against three open-source projects at pinned
 commits:
 
 | Repo | Language | Haiku | Sonnet |
 |---|---|---|---|
 | [redash](https://github.com/getredash/redash) | Python | **6.1 min** | 17.3 min |
-| [gitea](https://github.com/go-gitea/gitea) | Go | **6.2 min** | 6.6 min + timeout* |
 | [cal.com](https://github.com/calcom/cal.com) | TypeScript | **8.7 min** | 25.7 min |
 | [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **5.7 min** | 14.7 min |
 
-\* Sonnet's full audit on gitea exceeded the 20-minute per-call timeout.
 Haiku finished gitea in 2 minutes. For very large monorepos, the
 PR-scoped `--diff-base` flow is the practical option.
 
