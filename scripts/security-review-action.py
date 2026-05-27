@@ -38,6 +38,7 @@ from _claude_cli import (  # noqa: E402
     ANTI_INJECTION, SEVERITY_ORDER, ClaudeCLIError, preflight_claude,
     run_claude,
 )
+from _pr_patterns import scan_files as scan_regex_patterns  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).parent
 SKILLS_DIR = SCRIPT_DIR.parent / ".claude" / "skills"
@@ -280,14 +281,32 @@ def main() -> int:
     plugin_dir = skill_path.parent.parent.parent.parent
 
     changed: list[str] = []
+    regex_findings: list[dict] = []
     if args.diff_base:
         changed = get_changed_files(repo_dir, args.diff_base)
         if not changed:
             print("No changed files. Nothing to review.")
             return 0
+        # Deterministic Layer 1: regex catalog over the changed files. A hit
+        # is a confirmed finding — no judgment needed — and the LLM is told
+        # not to re-list these. The LLM still runs for context-dependent
+        # issues regex can't decide (IDOR, auth bypass, dataflow).
+        regex_findings = scan_regex_patterns(repo_dir, changed)
+        if regex_findings:
+            print(f"  Regex pre-pass: {len(regex_findings)} deterministic finding(s)")
         # Sanitize filenames to prevent prompt injection via crafted paths
         safe_changed = [re.sub(r"[^\w./\-]", "_", f) for f in changed]
         file_list = "\n".join(f"- `{f}`" for f in safe_changed)
+        prepass_block = ""
+        if regex_findings:
+            prepass_block = (
+                "\n\nThe following findings have already been detected by a "
+                "deterministic regex pre-pass and will be included in the final "
+                "report. Do NOT re-emit them; focus on context-dependent issues "
+                "(IDOR, auth bypass, dataflow, missing controls) that the regex "
+                "pass cannot catch.\n\n"
+                f"Pre-detected:\n```json\n{json.dumps(regex_findings, indent=2)}\n```"
+            )
         user_prompt = (
             "Run the Soundcheck /pr-review gate on the following changed "
             "files. This is mode 1 (PR gate): single-pass, no subagents, "
@@ -297,6 +316,7 @@ def main() -> int:
             "callers, configs) but the findings table must contain only "
             "entries from the changed files listed above. Skip Medium and "
             "Low — those are mode 2's job."
+            f"{prepass_block}"
         )
         mode = f"diff vs {args.diff_base} ({len(changed)} files)"
         allowed_tools = "Read,Grep,Glob"
@@ -369,8 +389,22 @@ def main() -> int:
     except MissingFindingsBlock as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         _write_audit_log(args, started_iso, run_started, skill_path,
-                         skill_hash, "parse-failure", [], 0, None)
+                         skill_hash, "parse-failure", [], 0, None,
+                         regex_findings_count=len(regex_findings))
         return 2
+
+    # Merge the deterministic regex findings with the LLM findings, deduped
+    # by (file, line, skill). Regex findings win on conflict — they're the
+    # canonical version of the same finding.
+    if regex_findings:
+        seen: set[tuple[str, int, str]] = {
+            (f["file"], f.get("line", 0), f["skill"]) for f in regex_findings
+        }
+        deduped_llm = [
+            f for f in findings
+            if (f["file"], f.get("line", 0), f["skill"]) not in seen
+        ]
+        findings = regex_findings + deduped_llm
 
     critical_high = [
         f for f in findings if f.get("severity") in ("Critical", "High")
@@ -388,7 +422,8 @@ def main() -> int:
         print(f"PR summary written to {output_path}")
         _write_audit_log(args, started_iso, run_started, skill_path,
                          skill_hash, "empty-findings-on-nontrivial-diff",
-                         findings, 0, None)
+                         findings, 0, None,
+                         regex_findings_count=len(regex_findings))
         return 2
 
     summary = build_pr_body(findings, display)
@@ -411,7 +446,8 @@ def main() -> int:
                   "skill-path outside the repo.", file=sys.stderr)
             _write_audit_log(args, started_iso, run_started, skill_path,
                              skill_hash, "autofix-refused-skill-in-repo",
-                             findings, 0, None)
+                             findings, 0, None,
+                             regex_findings_count=len(regex_findings))
             return 2
         cleanup_skill = SKILLS_DIR / "security-cleanup" / "SKILL.md"
         if not cleanup_skill.exists():
@@ -478,7 +514,8 @@ def main() -> int:
 
     _write_audit_log(args, started_iso, run_started, skill_path,
                      skill_hash, "ok", findings, len(critical_high),
-                     autofix_files)
+                     autofix_files,
+                     regex_findings_count=len(regex_findings))
     return 1 if critical_high else 0
 
 
@@ -500,6 +537,7 @@ def _write_audit_log(
     findings: list[dict],
     critical_high_count: int,
     autofix_files: list[str] | None,
+    regex_findings_count: int = 0,
 ) -> None:
     if not args.audit_log:
         return
@@ -523,6 +561,7 @@ def _write_audit_log(
         "findings_total": len(findings),
         "findings_by_severity": by_severity,
         "critical_high_count": critical_high_count,
+        "regex_findings_count": regex_findings_count,
     }
     try:
         Path(args.audit_log).write_text(
