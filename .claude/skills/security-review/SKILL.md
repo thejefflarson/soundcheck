@@ -10,10 +10,11 @@ description: Runs a full OWASP/CWE security audit via isolated subagents. Use wh
 ## What this checks
 
 Full repo audit against the OWASP Web Top 10:2025 + LLM Top 10:2025
-catalogs, run via a three-stage pipeline: threat-model → hotspots →
-review. Main context never reads code; it dispatches subagents
-(`threat-modeling`, `hotspot-mapping`, `vulnerability-audit`,
-`design-review`, `attack-chain-analysis`) and renders findings.
+catalogs, run via a four-stage pipeline: threat-model → hotspots →
+review → validate. Main context never reads code; it dispatches
+subagents (`threat-modeling`, `hotspot-mapping`, `vulnerability-audit`,
+`design-review`, `finding-validate`, `attack-chain-analysis`) and
+renders findings.
 
 ## Vulnerable patterns
 
@@ -30,8 +31,8 @@ catalog file.
 Use only the **Agent** tool in main context. **No Read/Grep/Glob/
 Bash in main context.** Stage prompts live in `agents/`:
 `threat-modeling`, `hotspot-mapping`, `design-review`,
-`vulnerability-audit`, `attack-chain-analysis`. This skill is just
-the coordinator.
+`vulnerability-audit`, `finding-validate`, `attack-chain-analysis`.
+This skill is just the coordinator.
 
 Copy this checklist as you progress:
 
@@ -39,6 +40,7 @@ Copy this checklist as you progress:
 - [ ] Stage 0 — threat-modeling returned
 - [ ] Stage 1 — hotspot-mapping returned (one whole-repo call)
 - [ ] Stages 1b+2 — design-review + N vulnerability-audit in ONE message
+- [ ] Stage 2.5 — finding-validate returned; refuted findings dropped
 - [ ] Stage 3 — attack-chain-analysis returned
 - [ ] Stage 4 — findings table rendered with severity legend
 - [ ] Stage 5 — suggested /security-cleanup to the user
@@ -66,6 +68,14 @@ that array as the hotspot list for Stage 2.
   hotspot must be in some chunk; serial launches defeat parallelism.
 
 Concatenate every returned findings array. Dedupe by `(file, line)`.
+
+### Stage 2.5 — Validate findings
+
+Dispatch one `finding-validate` subagent with the merged findings
+array and the threat model JSON. It returns a JSON array of 0-based
+indices to drop — findings refuted by concrete evidence at the
+cited line (guard, sanitizer, correct API). `[]` is common. Remove
+the indicated indices before Stage 3.
 
 ### Stage 3 — Attack-chain analysis
 
