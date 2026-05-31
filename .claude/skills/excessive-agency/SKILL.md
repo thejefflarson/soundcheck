@@ -17,10 +17,11 @@ a single compromised or hallucinated step can cause unrecoverable damage.
 
 ## Vulnerable patterns
 
-- Agent calls `send_email()` or `delete_record()` immediately on LLM instruction with no confirmation
-- Single LLM response authorizes an irreversible production action (deploy, drop table)
-- Agent runs with write access to all resources when only read is needed for the task
-- No kill switch, pause mechanism, or audit trail for agent actions
+- Agent dispatches an irreversible action (send mail, delete record, deploy, drop table) immediately on LLM instruction with no human confirmation step
+- Single LLM response authorizes a high-impact production action with no impact classification or approval gate
+- Agent runs with write access to resources beyond what the task requires — no least-privilege scoping at the tool boundary
+- No kill switch, pause mechanism, bounded iteration count, or audit trail for agent actions
+- Tool that accepts a raw query string, shell command, or code blob built by the LLM rather than typed structured parameters
 
 ## Fix immediately
 
@@ -49,16 +50,9 @@ these properties:
    bypassable through encoding, Unicode, or patterns the author didn't
    anticipate — it is not a substitute for a structured parameter schema.
 
-Anchor — shape, not implementation:
-
-```
-action = plan_from_llm(task)
-require(action.name in TOOL_ALLOWLIST)
-if impact(action) == HIGH:
-    require(human_approves(action))        # blocks until approved
-audit_log(action)                          # before dispatch, not after
-dispatch(action)
-```
+Translate these principles to the audited file's language, agent framework, and
+tool-dispatch surface. Use the framework's documented approval / human-in-the-loop
+hook — do not invent ad-hoc confirmation prompts inside the prompt template.
 
 ## Verification
 

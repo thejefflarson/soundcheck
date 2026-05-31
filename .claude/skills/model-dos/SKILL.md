@@ -27,31 +27,27 @@ inference costs, saturate GPU/CPU, and deny service to legitimate users.
 Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
 these properties:
 
-1. **Every LLM call sets an explicit output cap** — `max_tokens`, `max_output_tokens`,
-   or the provider equivalent. Leaving it at the provider default lets a single
+1. **Every LLM call sets an explicit output cap** — the provider's max-tokens
+   parameter or its equivalent. Leaving it at the provider default lets a single
    request run for minutes and rack up dollars in tokens.
 2. **Prompt input is length-capped at the handler boundary** before it reaches the
-   inference client. Measured in chars, bytes, or tokens — the exact unit doesn't
+   inference client. Measured in chars, bytes, or tokens — the exact unit does not
    matter as long as the cap runs before the upstream call.
 3. **Conversation context is bounded.** Either the handler is stateless
    single-turn, or accumulated history is trimmed to a fixed turn or token
-   budget before every call. Unbounded history is an attacker's favorite amplifier.
+   budget before every call. Unbounded history is an attacker's favorite
+   amplifier.
 4. **Per-identifier throttling** (per user, per API key, per IP) runs on every
    LLM endpoint. In-process token bucket, framework middleware, or reverse-proxy
-   rule — anything that survives alias/batch tricks and prevents one caller from
-   pinning the endpoint.
-5. **Every inference call has a deadline.** SDK timeout, HTTP client timeout,
-   request-context cancellation — a hung upstream must not be able to indefinitely
-   occupy a worker.
+   rule — anything that survives alias and batch tricks and prevents one caller
+   from pinning the endpoint.
+5. **Every inference call has a deadline.** SDK timeout, HTTP client timeout, or
+   request-context cancellation — a hung upstream must not be able to
+   indefinitely occupy a worker.
 
-Anchor — shape, not implementation:
-
-```
-require(len(user_text) <= MAX_CHARS)
-require(rate_limiter.allow(user_id))
-history = trim(history, MAX_TURNS)
-resp = llm.call(history + [user_text], max_tokens=512, timeout=30)
-```
+Translate each principle to the inference SDK, web framework, and rate-limiter of
+the audited file. Use the SDK's documented cap and timeout parameters — do not rely
+on global defaults.
 
 ## Verification
 

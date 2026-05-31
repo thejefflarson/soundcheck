@@ -17,55 +17,42 @@ escalation.
 
 ## Vulnerable patterns
 
-- `<form method="POST" action="/transfer">` — form with no CSRF token hidden field
-- `@csrf_exempt` / `csrf().disable()` — framework CSRF protection explicitly disabled
-- `Set-Cookie: session=abc123` — session cookie without `SameSite=Strict` or `SameSite=Lax`
-- Express app with no `csurf` or `csrf-csrf` middleware registered
+- HTML form posting a state-changing request with no CSRF token hidden field
+- Framework CSRF protection explicitly disabled or exempted on a state-changing endpoint
+- Session cookie issued without a `SameSite` attribute (`Lax` or `Strict`)
+- Web app with no CSRF middleware registered for cookie-authenticated state-changing routes
+- Cookie-authenticated API endpoint accepting POST/PUT/PATCH/DELETE with no token check
 
 ## Fix immediately
 
-For each vulnerable call site, apply the appropriate control:
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties:
 
-- **Django**: remove `@csrf_exempt`, ensure `django.middleware.csrf.CsrfViewMiddleware`
-  is in `MIDDLEWARE`, include `{% csrf_token %}` in every POST form
-- **Flask**: use `flask-wtf` with `CSRFProtect(app)`, include `{{ form.hidden_tag() }}`
-  or `<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">`
-- **Express**: add `csrf-csrf` or `csurf` middleware, pass token to templates via
-  `res.locals`, include `<input type="hidden" name="_csrf" value="{{csrfToken}}">`
-- **Spring**: remove `http.csrf().disable()` / `http.csrf(csrf -> csrf.disable())`,
-  include `<input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}"/>`
-  in Thymeleaf forms or use `th:action` (auto-includes token)
-- **Go**: use `gorilla/csrf` or `justinas/nosurf` middleware, inject token via
-  `csrf.TemplateField(r)` in templates
-- **Rust (actix-web)**: use `actix-csrf` middleware, validate a token from a hidden
-  form field against the session-bound value
-- **Cookies**: always set `SameSite=Lax` (minimum) or `SameSite=Strict` on session
-  cookies; add `Secure` and `HttpOnly` flags
+1. **Every state-changing endpoint (POST/PUT/PATCH/DELETE) validates a per-session
+   or per-request CSRF token server-side** before any mutation. Use the framework's
+   documented CSRF middleware — do not roll your own.
+2. **Framework CSRF protection is never disabled or exempted on a state-changing
+   route.** If a route legitimately needs to opt out (a pure JSON API authenticated
+   by `Authorization: Bearer` headers, not cookies), the opt-out must be explicit
+   and the cookie-auth path must remain protected.
+3. **Session cookies carry `SameSite=Lax` at minimum, or `SameSite=Strict` for
+   sensitive flows**, plus `Secure` and `HttpOnly`. This blocks cross-origin
+   cookie attachment on top-level navigations or subrequests that don't need it.
+4. **CSRF tokens are not exposed in URLs, logs, or `Referer` headers** — they live
+   in a hidden form field or a dedicated request header, never in the query string.
+5. **Forms include the token via the framework's template helper**, so the token
+   binds to the session and is rotated as the framework intends.
 
-**Secure pattern (Django):**
-
-```python
-# views.py — no @csrf_exempt, middleware enabled
-from django.shortcuts import render
-
-def transfer(request):
-    if request.method == "POST":
-        # token validated automatically by CsrfViewMiddleware
-        process_transfer(request.POST["amount"], request.POST["to"])
-        return redirect("/done")
-    return render(request, "transfer.html")  # template has {% csrf_token %}
-```
-
-**Why this works:** The server generates a per-session (or per-request) token that an
-attacker's cross-origin page cannot read. The middleware rejects any POST missing or
-mismatching the token.
+Translate these principles to the audited file's language and framework. Use the
+documented CSRF middleware and template helpers for that stack — do not hand-build
+token comparison logic.
 
 ## Verification
 
 Confirm the following properties hold (language-agnostic):
 
 - [ ] Every state-changing endpoint (POST/PUT/PATCH/DELETE) is protected by a CSRF token validated server-side
-- [ ] No framework CSRF middleware is disabled or bypassed (`@csrf_exempt`, `csrf().disable()`, `csrf: false`)
+- [ ] No framework CSRF middleware is disabled or bypassed on a cookie-authenticated state-changing route
 - [ ] Session cookies include `SameSite=Lax` or `SameSite=Strict` attribute
 - [ ] CSRF tokens are not leaked in URLs, logs, or Referer headers
 - [ ] API-only endpoints using token-based auth (Bearer header) may skip CSRF tokens, but cookie-authenticated endpoints must not

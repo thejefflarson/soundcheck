@@ -7,106 +7,68 @@ description: Detects library-internal cryptographic correctness bugs that patter
 
 ## What this checks
 
-Cryptographic primitives are correct only when their preconditions
-are met. Not "weak algorithm picked" — that's `cryptographic-failures`.
-These are "right primitive, wrong wiring": nonce reused, per-signature
-random reused, comparison branches on secret bits, exception type
-leaks which decryption failure happened. Each pattern below has
-produced a real CVE (Sony PS3 ECDSA k-reuse, Marvin Attack RSA timing).
+Cryptographic primitives are correct only when their preconditions are met. Not
+"weak algorithm picked" — that's `cryptographic-failures`. These are "right
+primitive, wrong wiring": nonce reused, per-signature random reused, comparison
+branches on secret bits, exception type leaks which decryption failure happened.
+Each pattern below has produced a real CVE (Sony PS3 ECDSA k-reuse, Marvin RSA timing).
 
 ## Vulnerable patterns
 
-- **AEAD nonce reuse**: `aes_gcm.encrypt(nonce, pt, aad)` where
-  `nonce` is `\x00 * 12` or a counter that wraps. With a single
-  reused nonce, an attacker XORs two ciphertexts and recovers
-  both plaintexts.
-- **ECDSA/DSA k reuse or weak randomness**: signing with a
-  predictable or repeated per-signature random value, or using
-  the system RNG without checking it's been seeded. Two signatures
-  with the same k recover the private key by linear algebra.
-- **Length-extension on bare hashes**: `auth = sha256(secret || msg);`
-  used as a MAC. SHA-2 length-extension means an attacker who
-  knows the auth and `len(secret)` can compute `sha256(secret || msg || padding || extra)`.
-- **Padding oracle via exception distinguishability**: catching
-  one exception type for "ciphertext too short" and a different
-  type for "padding invalid". The Bleichenbacher and Manger
+- **AEAD nonce reuse**: an AEAD encrypt call where the nonce is fixed, zeroed, or
+  a wrapping counter. A single reused nonce lets an attacker XOR two ciphertexts
+  and recover both plaintexts.
+- **ECDSA/DSA k reuse or weak randomness**: signing with a predictable or repeated
+  per-signature random value. Two signatures with the same k recover the private
+  key by linear algebra.
+- **Length-extension on bare hashes**: using `hash(secret || msg)` as a MAC. SHA-2
+  length-extension lets an attacker forge a valid tag over an extended message.
+- **Padding oracle via exception distinguishability**: distinct exception types
+  for "ciphertext too short" versus "padding invalid". Bleichenbacher and Manger
   attacks need exactly that one bit per query.
-- **Branching on secret material**: `if (key_bit[i]) ... else ...`
-  produces a measurable timing difference. Includes early-exit
-  byte comparison on MACs (`memcmp` instead of `CRYPTO_memcmp`).
-- **Static IV for CBC**: encrypting two plaintexts with the same
-  IV reveals their common prefix.
-- **ECB used for structured data**: same plaintext block → same
-  ciphertext block, leaks structure.
+- **Branching on secret material**: a conditional whose branch depends on a key
+  bit or MAC byte produces a measurable timing difference. Includes early-exit
+  byte comparison on MAC or signature verification.
+- **Static IV for CBC**: encrypting two plaintexts with the same IV reveals their
+  common prefix.
+- **ECB used for structured data**: identical plaintext blocks produce identical
+  ciphertext blocks, leaking structure.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the call site to ensure
-preconditions are met.
+Flag the vulnerable call site and explain the risk. Then suggest a fix that
+establishes these properties:
 
-**Secure AEAD with fresh nonce:**
+1. **Every AEAD encrypt uses a fresh nonce drawn from a CSPRNG**, or a managed
+   monotonic counter with an overflow guard. The nonce is stored or transmitted
+   alongside the ciphertext.
+2. **ECDSA/DSA signing uses deterministic k (RFC 6979)** or a library that
+   guarantees a fresh per-signature random — the caller never supplies k.
+3. **MACs use a MAC primitive (HMAC, Poly1305, KMAC), not a bare hash of
+   `secret || msg`.** HMAC's two-pass construction defeats length-extension.
+4. **Comparisons over MACs, signatures, or hashes use a constant-time primitive**
+   documented for that purpose — never plain equality or early-exit byte comparison.
+5. **All decryption-failure paths raise a single exception type at the boundary**,
+   collapsing padding, length, and authentication failures into one indistinguishable
+   error.
+6. **No branch inside a crypto routine depends on a secret bit.** Use bitwise
+   selection or library primitives that document constant-time behavior.
+7. **CBC uses a fresh random IV per message; ECB is not used for structured data.**
+   Prefer an AEAD mode over CBC+MAC when the platform offers one.
 
-```python
-# Each encrypt gets a fresh random 96-bit nonce; never reused.
-nonce = secrets.token_bytes(12)
-ct = AESGCM(key).encrypt(nonce, pt, aad)
-# Caller MUST store/transmit nonce alongside ct.
-```
-
-**Secure ECDSA signing:**
-
-```python
-# Library does RFC 6979 deterministic k internally; never roll your own.
-sig = key.sign(msg, ec.ECDSA(hashes.SHA256()))
-```
-
-**Secure MAC instead of length-extendable hash:**
-
-```python
-import hmac, hashlib
-auth = hmac.new(secret, msg, hashlib.sha256).digest()
-# HMAC is not length-extension vulnerable; SHA-256 alone is.
-```
-
-**Constant-time comparison:**
-
-```python
-import hmac
-ok = hmac.compare_digest(expected, received)
-```
-
-**Single exception type for all decrypt failures:**
-
-```python
-try:
-    pt = rsa_decrypt(ct)
-except (InvalidPadding, InvalidLength, DecryptionFailed) as e:
-    raise DecryptionError("decryption failed") from None  # collapse
-```
-
-**Why this works:** AEAD with a fresh random nonce avoids the
-two-ciphertext-XOR attack. RFC 6979 derives k deterministically
-from key+message so reuse is impossible. HMAC's two-pass construction
-defeats length-extension. `compare_digest` and `CRYPTO_memcmp` take
-constant time regardless of where the mismatch falls. Collapsing
-exception types removes the oracle bit.
+Translate these principles to the audited file's language and crypto library. Use
+the documented high-level API (AEAD wrapper, signing context, HMAC primitive,
+constant-time-compare helper) — do not assemble these guarantees by hand.
 
 ## Verification
 
 After rewriting, confirm:
 
-- [ ] Every AEAD encrypt site uses a freshly-generated nonce
-      from a CSPRNG, OR an explicitly-managed monotonic counter
-      with an overflow check
-- [ ] No call to `sign()` passes a caller-supplied k unless the
-      function name explicitly says "deterministic" (RFC 6979)
-- [ ] No MAC is implemented as `hash(secret || msg)`; HMAC or a
-      MAC primitive (Poly1305, KMAC) is used
-- [ ] All MAC / signature / hash comparisons use a constant-time
-      primitive (`hmac.compare_digest`, `CRYPTO_memcmp`,
-      `subtle.ConstantTimeCompare`), never `==` or `memcmp`
-- [ ] All decryption failures raise the same exception type at
-      the boundary
+- [ ] Every AEAD encrypt site uses a fresh CSPRNG nonce or a managed monotonic counter with overflow check
+- [ ] No signing call passes a caller-supplied k unless the API documents deterministic k (RFC 6979)
+- [ ] No MAC is implemented as `hash(secret || msg)`; HMAC or a MAC primitive is used
+- [ ] All MAC, signature, and hash comparisons use a constant-time primitive — never plain equality
+- [ ] All decryption failures raise the same exception type at the boundary
 - [ ] No branch in the crypto routine depends on a secret bit
 
 ## References

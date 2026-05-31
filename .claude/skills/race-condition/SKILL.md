@@ -18,50 +18,42 @@ double-spend, and data corruption.
 
 ## Vulnerable patterns
 
-- `if os.path.exists(f): os.remove(f)` — file can be swapped between check and remove
-- `if user.balance >= amount: user.balance -= amount` — double-spend without locking
-- `count = db.get(key); db.set(key, count + 1)` — lost update under concurrency
-- `if !exists(username) { create(username) }` — duplicate creation race
+- File existence checked before opening, deleting, or creating — the file can be swapped between the check and the operation.
+- Balance, quota, or counter read into memory, modified, then written back without locking or a transaction — concurrent updates lose writes or double-spend.
+- "Does this username exist? if not, create it" with no database-level uniqueness constraint — two concurrent callers both see "no" and both create.
+- Privilege or ownership checked in one call, then a separate later call performs the action on the same resource — the resource may have changed between calls.
 
 ## Fix immediately
 
 Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+these properties. Translate each property into the audited file's language,
+database driver, and filesystem API — use the platform's documented atomic
+primitives.
 
 1. **No check-then-act sequence on shared state runs without atomicity.** The
    check and the act collapse into a single atomic operation, or both sit
-   inside a lock, transaction, or database-level guard. A `SELECT` followed by
-   a separate `UPDATE` is the exact bug — merge them into a conditional
-   `UPDATE ... WHERE` that returns the affected row count.
+   inside a lock, transaction, or database-level guard. A read followed by a
+   separate write is the exact bug — merge them into a conditional update that
+   returns the affected row count.
 2. **Balance, counter, and quota updates use atomic increments or
-   compare-and-swap** — never a read, modify, write sequence in application
+   compare-and-swap** — never a read-modify-write sequence in application
    code. Under concurrency the read-modify-write loses every interleaved
    update; the database or atomic type is the correct place for the mutation.
-3. **File operations that depend on existence use atomic APIs** — `rename`,
-   `link`, `O_CREAT|O_EXCL`, `os.makedirs(exist_ok=False)`. `os.path.exists()`
-   followed by `os.open()` is TOCTOU-exploitable; the atomic flag short-circuits
+3. **File operations that depend on existence use atomic primitives** —
+   exclusive-create flags, atomic rename, atomic link. A separate exists check
+   followed by an open is TOCTOU-exploitable; the atomic flag short-circuits
    the window.
 4. **Uniqueness constraints live in the database, not in application code.**
-   `if !exists() { create() }` races two ways with itself; a `UNIQUE` index
-   plus an insert-and-catch-duplicate pattern is race-free by construction.
-
-Anchor — shape, not implementation:
-
-```
-# atomic DB update with guard
-rows = db.execute("UPDATE accounts SET balance = balance - ? "
-                  "WHERE id = ? AND balance >= ?", [amount, id, amount])
-require(rows == 1)                     # rowcount is the "check"
-
-# atomic file create
-fd = open(path, O_CREAT | O_EXCL)      # fails if it already exists
-```
+   An "exists then create" pattern races two ways with itself; a uniqueness
+   index plus an insert-and-catch-duplicate pattern is race-free by
+   construction.
 
 ## Verification
 
 - [ ] No check-then-act sequence on shared state (files, database rows, in-memory counters) operates without atomicity — either a single atomic operation, a lock, or a database-level guard
 - [ ] Balance/counter updates use atomic increments or compare-and-swap, not read-modify-write sequences
-- [ ] File operations that depend on existence or state use atomic APIs (rename, link, O_CREAT|O_EXCL) rather than check-then-act
+- [ ] File operations that depend on existence or state use atomic primitives (exclusive-create, atomic rename, atomic link) rather than check-then-act
+- [ ] Uniqueness is enforced by a database constraint, not by an application-level exists-then-create pattern
 
 ## References
 

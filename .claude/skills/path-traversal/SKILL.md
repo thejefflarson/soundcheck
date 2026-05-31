@@ -18,48 +18,38 @@ configuration, or achieving remote code execution via file write.
 
 ## Vulnerable patterns
 
-- `open(f"/uploads/{filename}")` — user-supplied filename can contain `../../etc/passwd`
-- `os.path.join(base, user_input)` — join does NOT prevent absolute paths (`/etc/passwd` ignores base)
-- `filepath.Join(root, r.URL.Query().Get("file"))` — Go join strips `..` but doesn't verify result is under root
-- `Paths.get(baseDir, userInput)` — Java Path doesn't enforce containment
-- `fs::read_to_string(format!("data/{}", user_input))` — format string allows traversal
+- A caller-supplied filename interpolated or concatenated into a path before opening, with no canonicalization.
+- Path-join helper used as the only defense — these collapse some `..` segments but do not verify the final path stays under the intended root, and many treat an absolute caller-supplied path as overriding the base.
+- Existence or stat check on the user path that does not follow symlinks, but the subsequent read/write does — symlink escape.
+- Canonicalization performed once at handler entry, but a later file operation uses the un-canonicalized value.
 
 ## Fix immediately
 
 Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+these properties. Translate each property into the audited file's language and
+filesystem API — use that platform's documented canonicalization and symlink-
+resolution call.
 
 1. **The intended root is resolved to a canonical absolute path once**, up
-   front. Everything that follows compares against the resolved root — not
+   front. Everything that follows compares against the resolved root, not
    against a relative string that can match itself after traversal.
 2. **The caller-supplied path is joined with the root, then resolved to a
-   canonical absolute path that also follows symlinks.** `realpath`,
-   `Path.resolve()`, `toRealPath()`, `filepath.EvalSymlinks` — the call that
-   collapses `../` and follows links. Only after this does the containment
-   check make sense.
-3. **The resolved target must start with the resolved root** (or
-   `is_relative_to`, `startsWith` equivalent). A mismatch means traversal or
-   symlink escape; reject rather than fall through. `os.path.join` and
-   `filepath.Join` alone do not satisfy this — they collapse some `..` but
-   don't verify containment.
+   canonical absolute path that also follows symlinks** — using the platform's
+   real-path / canonicalize / resolve-symlinks call. Only after this does the
+   containment check make sense.
+3. **The resolved target must start with the resolved root.** A mismatch means
+   traversal or symlink escape; reject rather than fall through. Standard
+   path-join APIs alone do not satisfy this — they collapse some `..` segments
+   but do not verify containment.
 4. **The check runs before every file operation** — read, write, delete, stat.
-   A canonicalization that happens once at handler entry but isn't re-applied
-   to a later `open()` call is a bug.
-
-Anchor — shape, not implementation:
-
-```
-root   = canonical(ROOT_DIR)
-target = canonical(root / user_filename)           # resolves .., follows symlinks
-require(target.starts_with(root))                  # containment
-open(target)
-```
+   A canonicalization that happens once at handler entry but is not re-applied
+   to a later file operation is a bug.
 
 ## Verification
 
 - [ ] Every file operation using a caller-supplied path or filename resolves to a canonical absolute path and verifies it starts with the intended root directory
-- [ ] Symlinks are resolved (via realpath/EvalSymlinks/toRealPath) before the containment check, blocking symlink escapes
-- [ ] User-supplied filenames are never concatenated or interpolated into paths without canonicalization — `os.path.join` and `filepath.Join` alone are NOT sufficient
+- [ ] Symlinks are resolved before the containment check, blocking symlink escapes
+- [ ] User-supplied filenames are never concatenated or interpolated into paths without canonicalization — path-join alone is NOT sufficient
 - [ ] The root directory itself is resolved to a canonical path before comparison
 
 ## References

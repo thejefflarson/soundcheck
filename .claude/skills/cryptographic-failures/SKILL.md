@@ -17,10 +17,11 @@ directly enable credential stuffing, account takeover, and data breach.
 
 ## Vulnerable patterns
 
-- `hashlib.md5(password.encode()).hexdigest()` — MD5 is broken; no salt, trivially reversed with rainbow tables
-- `token = str(random.random())` — `Math.random()` / `random` is not cryptographically secure
-- `SECRET_KEY = "hardcoded-secret"` — key committed to source control
-- `AES.new(key, AES.MODE_ECB)` — ECB mode leaks patterns; identical plaintext blocks produce identical ciphertext
+- Password hashed with a fast or unsalted algorithm such as MD5, SHA1, or bare SHA-256
+- Security-sensitive token, session ID, nonce, or key generated from a non-cryptographic PRNG
+- Encryption or signing key declared as a hardcoded string in source
+- Symmetric encryption using ECB mode, or CBC mode with no separate MAC
+- A nonce or IV that is constant, zero, or reused across messages with the same key
 
 ## Fix immediately
 
@@ -31,34 +32,28 @@ these properties:
    argon2. Never MD5, SHA1, or SHA256-alone: they're fast enough to brute-force
    billions of candidates per second on consumer GPUs. The salt is per-password
    and stored alongside the hash, not a global constant.
-2. **Security-sensitive randomness comes from a CSPRNG** — `secrets` in Python,
-   `crypto.randomBytes` in Node, `crypto/rand` in Go, `SecureRandom` in Java.
-   Never `random`, `Math.random`, or time-seeded PRNGs for tokens, session IDs,
-   nonces, or keys.
-3. **Symmetric encryption uses an authenticated mode** — AES-GCM, AES-CCM,
+2. **Security-sensitive randomness comes from a CSPRNG** — the language's
+   documented cryptographic random source. Never a general-purpose PRNG or
+   time-seeded generator for tokens, session IDs, nonces, or keys.
+3. **Symmetric encryption uses an authenticated mode** — AES-GCM, AES-CCM, or
    ChaCha20-Poly1305. ECB never; CBC only with a separate MAC (encrypt-then-MAC).
    A fresh nonce per message, never reused with the same key.
 4. **Keys live outside the source tree** — environment variable, secrets manager,
    KMS, or OS keystore. Never hardcoded literals, never committed config files.
    Rotation requires touching infrastructure, not source.
 
-Anchor — shape, not implementation:
-
-```
-hashed  = password_hash(password, algo=bcrypt_or_argon2)   # slow + salted
-token   = csprng_bytes(32)                                  # not Math.random
-key     = load_from_env_or_kms("ENCRYPTION_KEY")
-ct      = aead_encrypt(key, nonce=csprng_bytes(12), pt, aad)
-```
+Translate these principles to the audited file's language and platform. Use the
+documented cryptographic primitives for that stack — do not reimplement hashing,
+random, or AEAD from lower-level building blocks.
 
 ## Verification
 
 Confirm the response:
 
 - [ ] Passwords are hashed with bcrypt, scrypt, or argon2 — never MD5, SHA1, or SHA256 alone
-- [ ] All security tokens use `secrets.token_urlsafe` / `crypto.randomBytes` — not `random` / `Math.random()`
+- [ ] All security tokens use the language's cryptographic random source — never a general-purpose PRNG
 - [ ] No keys or secrets appear in source code; all loaded from environment or a secrets manager
-- [ ] Symmetric encryption uses an authenticated mode (GCM, CCM) — not ECB or CBC without MAC
+- [ ] Symmetric encryption uses an authenticated mode (GCM, CCM, ChaCha20-Poly1305) — not ECB or CBC without MAC
 
 ## References
 

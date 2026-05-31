@@ -17,41 +17,33 @@ the full schema to attackers), and batch/alias attacks that bypass rate limiting
 
 ## Vulnerable patterns
 
-- `ApolloServer({ schema })` — no depth limit, no cost analysis, introspection on by default
-- Deeply nested query: `{ user { posts { comments { author { posts { ... } } } } } }`
-- Alias batching: `{ a1: login(p:"x") a2: login(p:"y") ... a1000: login(p:"z") }`
-- `introspection: true` in production — full schema exposed to attackers
+- GraphQL server constructed with no depth-limit or cost-analysis validation rule
+- Deeply nested query allowed because no maximum-depth rule rejects it before resolver execution
+- Alias batching that repeats a credential-accepting field many times in one request, bypassing per-HTTP-request rate limits
+- Introspection left enabled in production, exposing the full schema to unauthenticated callers
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+Flag the vulnerable code and explain the risk. Translate the principles below to the
+language and framework of the audited file — use that stack's documented validation
+rule, plugin, or middleware API; do not roll your own.
 
-1. **Query depth is capped at a small fixed value** (typically 5–10) via a
+For each finding, establish these properties:
+
+1. **Query depth is capped at a small fixed value** (typically 5–10) by a
    validation rule or middleware that runs before resolver execution. Unbounded
    depth lets a single query trigger exponential resolver work.
-2. **Total query cost is bounded.** Either a cost-analysis plugin that assigns
+2. **Total query cost is bounded.** Either a cost-analysis layer that assigns
    weights to fields and rejects over-budget queries, or alias/field-count limits
    — the goal is that a single request cannot do unbounded work regardless of
-   depth. Alias batching (`a1: … a1000: …`) bypasses per-request rate limits
-   unless this is enforced.
+   depth. Alias batching bypasses per-request rate limits unless this is enforced.
 3. **Introspection is disabled in production.** Leaving it on exposes the full
    schema — including deprecated fields, admin types, and hints for targeted
    attacks — to anyone who can hit the endpoint. Gate it on an environment flag.
 4. **Every credential-accepting mutation (login, passwordReset, mfaVerify) has
    a rate limit that survives alias batching** — apply per operation, not per
-   HTTP request, so `a1: login … a1000: login` counts as 1000 attempts.
-
-Anchor — shape, not implementation:
-
-```
-server = new GraphQLServer(
-    schema,
-    introspection = env != "production",
-    validation = [depthLimit(5), costAnalysis(max=1000)],
-    rate_limit = per_operation("login", 5/min),
-)
-```
+   HTTP request, so a thousand aliased `login` selections count as a thousand
+   attempts.
 
 ## Verification
 

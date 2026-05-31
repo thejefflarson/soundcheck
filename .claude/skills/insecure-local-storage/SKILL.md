@@ -17,21 +17,24 @@ tokens without authentication.
 
 ## Vulnerable patterns
 
-- `open("config.json", "w"); json.dump({"token": token}, f)` — credentials in plaintext file
-- `SharedPreferences.edit().putString("api_key", key)` — Android prefs without encryption
-- `NSUserDefaults.standard.set(password, forKey: "password")` — iOS defaults without Keychain
-- `localStorage.setItem("auth_token", token)` — web storage without at-rest encryption
-- `tempfile.NamedTemporaryFile(); f.write(secret)` — secrets in world-readable temp files
+- Credentials or tokens written to a plain file (JSON, INI, dotfile) without encryption
+- Sensitive values written to an unencrypted platform preference store such as Android `SharedPreferences`, iOS `UserDefaults`, or Windows registry
+- Long-lived auth token placed in browser `localStorage` or `sessionStorage` where any script on the origin can read it
+- SQLite or other embedded database storing credentials with no at-rest encryption
+- Temp files containing secrets written to a world-readable directory with default permissions and not deleted on completion
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+Flag the vulnerable code and explain the risk. Translate the principles below to the
+audited file's platform and language — use that platform's documented secure-storage
+API (keychain, EncryptedSharedPreferences, DPAPI, HttpOnly cookie, etc.).
+
+For each finding, establish these properties:
 
 1. **Sensitive values go to platform-managed secure storage, not a plain file or
-   pref store.** OS keychain (Python `keyring`, iOS Keychain, macOS Keychain),
-   Android `EncryptedSharedPreferences`, Windows DPAPI / Credential Manager.
-   These encrypt at rest and scope access to the owning process.
+   pref store.** OS keychain, Android `EncryptedSharedPreferences`, Windows DPAPI
+   or Credential Manager, Linux secret service. These encrypt at rest and scope
+   access to the owning process.
 2. **Web clients do not store long-lived credentials in `localStorage` or
    `sessionStorage`.** These are readable by any script on the origin — one XSS
    and the token is gone. Use a Secure, HttpOnly, SameSite cookie for session
@@ -41,24 +44,14 @@ these properties:
    from device-static values. Symmetric encryption with a keychain-held key is
    the baseline.
 4. **Temp files for sensitive data are avoided**, or created with restrictive
-   permissions (`0600`), written to a user-only directory, and deleted in a
-   `finally` block — never left in `/tmp` with default perms.
-
-Anchor — shape, not implementation:
-
-```
-# sensitive value → platform secure store
-keychain.set("api_key", value)
-
-# or, if you must use a file
-key = keychain.get("file_enc_key") or keychain.generate_and_store("file_enc_key")
-write(path, aead_encrypt(key, value), mode=0o600)
-```
+   user-only permissions, written to a user-only directory, and deleted in a
+   finally/cleanup block — never left in a world-writable directory with default
+   permissions.
 
 ## Verification
 
 - [ ] No credentials, tokens, or PII written to plain files or standard preference stores
-- [ ] Platform secure storage API used (keyring, Keychain, EncryptedSharedPreferences)
+- [ ] Platform secure storage API used (keyring, Keychain, EncryptedSharedPreferences, DPAPI, or equivalent for the platform)
 - [ ] Temp files with sensitive data use secure deletion or are avoided entirely
 
 ## References

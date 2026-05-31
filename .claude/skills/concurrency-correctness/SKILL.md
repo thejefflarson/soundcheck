@@ -7,118 +7,44 @@ description: Detects multi-threaded code where a lock is held across a blocking 
 
 ## What this checks
 
-Concurrency bugs that read clean in isolation but produce
-deadlocks, lost wakeups, or data races in production. TSAN catches
-*triggered* races but not the structural mistake. This skill flags
-local patterns: lock-around-blocking-call, lock-order in nested
-acquires, atomic memory order, double-checked locking. Not a
-replacement for whole-program ownership analysis (borrow checker,
-lockdep, model checking) — those own that territory.
+Concurrency bugs that read clean in isolation but produce deadlocks, lost wakeups, or
+data races in production. Race detectors catch *triggered* races but not structural
+mistakes. Flags local patterns: lock-around-blocking-call, lock-order in nested
+acquires, atomic memory order, double-checked locking. Not a replacement for
+whole-program ownership analysis (borrow checker, lockdep, model checking).
 
 ## Vulnerable patterns
 
-- **Lock held across blocking I/O / await**:
-  ```python
-  with self._lock:
-      response = await session.get(url)   # holds the lock for an RTT
-  ```
-  Any other thread blocked on `self._lock` waits for the network.
-- **Lock held across `sleep()`** — same shape, intentionally
-  stalls everyone.
-- **Inconsistent lock order**: thread A takes `(L1, L2)`, thread
-  B takes `(L2, L1)` — classic AB-BA deadlock.
-- **Re-entrant lock on non-recursive mutex**: `mu.Lock(); ...; mu.Lock();`
-  in the same goroutine/thread — Go and C++ `std::mutex` deadlock.
-- **Atomic with `memory_order_relaxed` where acquire/release is
-  needed**: a flag set with `relaxed` doesn't synchronize
-  with the read; the reader can see the flag set before the
-  writer's payload writes are visible.
-- **Double-checked locking without acquire barrier**:
-  ```cpp
-  if (instance == nullptr) {
-      std::lock_guard g(m);
-      if (instance == nullptr) instance = new T();
-  }
-  ```
-  The outer read of `instance` needs at least acquire ordering
-  (use `std::atomic<T*>` with `load(memory_order_acquire)`),
-  otherwise the reader may see a non-null `instance` whose
-  fields haven't been published yet.
-- **Lock-then-channel-send on unbuffered channel** (Go): goroutine
-  receiving from the channel needs the lock to make progress →
-  deadlock.
-- **Async cancellation without holding the lock during cleanup**:
-  cancel mid-critical-section leaves invariants broken.
+- Lock held across a blocking operation — `await`, `sleep`, blocking I/O, or a blocking channel send — so every other waiter blocks on the slow thing
+- Inconsistent lock order across call sites — one path acquires `(L1, L2)`, another acquires `(L2, L1)`, producing classic AB-BA deadlock
+- Recursive acquisition of a non-recursive mutex on the same thread
+- Atomic flag published with relaxed ordering where acquire/release is required — the reader can observe the flag set before the writer's payload writes are visible
+- Double-checked locking where the outer read of the published pointer or flag uses no acquire barrier
+- Acquiring a lock and then sending on an unbuffered channel whose receiver needs the same lock to make progress
+- Async cancellation that interrupts a critical section without restoring invariants
 
 ## Fix immediately
 
-When this skill invokes, rewrite to drop the lock before blocking,
-fix lock order, use the right memory order, or replace the broken
-double-check with a safer idiom.
+Flag the vulnerable code, explain the risk, and suggest a fix establishing these
+properties. Translate to the concurrency primitives of the audited file — use that
+language's documented lock, atomic, once-cell, and channel APIs; do not import a recipe
+from a different language.
 
-**Don't hold a lock across await / I/O:**
-
-```python
-# Snapshot under lock, do I/O outside it.
-async with self._lock:
-    url = self._endpoint
-response = await session.get(url)
-```
-
-**Consistent lock order — canonicalize before acquire:**
-
-```cpp
-void transfer(Account &a, Account &b, int amount) {
-    Account *first  = (&a < &b) ? &a : &b;
-    Account *second = (&a < &b) ? &b : &a;
-    std::scoped_lock g(first->mu, second->mu);   // scoped_lock = deadlock-avoiding
-    ...
-}
-```
-
-**Correct double-checked locking:**
-
-```cpp
-static std::atomic<T*> instance{nullptr};
-T *get() {
-    T *p = instance.load(std::memory_order_acquire);
-    if (p == nullptr) {
-        std::lock_guard g(m);
-        p = instance.load(std::memory_order_relaxed);
-        if (p == nullptr) {
-            p = new T();
-            instance.store(p, std::memory_order_release);
-        }
-    }
-    return p;
-}
-```
-
-Or use `std::call_once` / a function-local `static` — correct
-by construction.
-
-**Why this works:** dropping the lock before blocking caps
-critical-section duration. Canonical lock order eliminates AB-BA.
-`release/acquire` on the published pointer ensures the reader
-sees the constructor's writes.
+1. **No blocking operation inside a held lock.** Snapshot whatever state is needed under the lock, release the lock, then perform the I/O, `await`, or `sleep` on the snapshot. The critical section stays bounded by CPU work only.
+2. **Lock order is canonical and total.** Every code path that acquires two or more locks acquires them in the same sequence — sorted by address, by name, or via a scoped/multi-lock primitive that handles ordering. Document the ordering rule near the lock declarations.
+3. **Memory ordering on atomics matches the synchronization need.** Use acquire on the read and release on the write whenever an atomic publishes a pointer, flag, or sequence that the reader will then dereference. Relaxed ordering is reserved for counters and statistics where no other state depends on the value.
+4. **Lazy initialization uses a primitive that is correct by construction** — a one-shot init helper, a function-local static where the language guarantees thread-safe initialization, or an atomic with explicit acquire/release on both the outer and inner reads. Hand-rolled double-checked locking without a barrier is not acceptable.
+5. **Non-recursive mutexes are never re-entered on the same thread.** When a recursive call site genuinely needs to take the lock again, use the recursive variant explicitly.
 
 ## Verification
 
-After rewriting, confirm:
+Criteria apply only to constructs the audited file actually contains;
+mark inapplicable bullets N/A rather than skipping silently.
 
-- [ ] No `await`, `time.sleep`, `recv`, `send` on unbuffered
-      channels, or other blocking calls inside a `with lock:` /
-      `lock_guard` / `mutex.Lock()` scope
-- [ ] When a function acquires two or more locks, the order is
-      total — every code path that holds both acquires them in
-      the same sequence (sorted by address, by name, or via
-      `std::scoped_lock`)
-- [ ] All `memory_order_relaxed` uses are paired with a comment
-      explaining why relaxed is sufficient (counter increment for
-      stats, not a synchronization flag)
-- [ ] Double-checked locking uses `std::atomic` with
-      `acquire`/`release`, or is replaced by `std::call_once` /
-      function-local static / `sync.Once`
+- [ ] No `await`, sleep, blocking I/O, or blocking channel send appears inside a held-lock scope
+- [ ] When a function acquires two or more locks, the order is total — every code path that holds both acquires them in the same sequence
+- [ ] Every relaxed-ordered atomic operation is paired with a comment explaining why relaxed is sufficient (e.g. statistics counter, not a synchronization flag)
+- [ ] Lazy initialization uses a once-helper, a thread-safe function-local static, or an atomic with explicit acquire/release on both reads — not hand-rolled double-checked locking without a barrier
 - [ ] No recursive lock attempt on a non-recursive mutex
 
 ## References

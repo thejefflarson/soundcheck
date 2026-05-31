@@ -7,99 +7,57 @@ description: Detects function-local misuse of memory and resource APIs in C, C++
 
 ## What this checks
 
-C and C++ memory and resource APIs can be called incorrectly in ways
-that don't show up as a syntactic bug but produce real exploitation
-primitives: a NULL-return that's dereferenced, a double-free on a
-goto-out path, a lock used before init, a file descriptor that
-survives `exec()` into a child process. The pattern is "API called
-the wrong way, locally to a call site." Existing static analyzers
-catch the easy cases; this skill is for the ones that read clean
-on first pass but fail in error / edge / cleanup paths.
-
-This skill does **not** do whole-program lifetime analysis — that's
-TSAN, ASAN, Valgrind, and Rust's borrow checker. It does *local*
-pattern matching at the call site.
+C, C++, and Rust unsafe memory and resource APIs called incorrectly at a single call
+site — a NULL return dereferenced, a double-free on an error path, a lock used
+before init, a file descriptor that survives `exec()`. Existing static analyzers
+catch the easy cases; this skill targets the ones that read clean on first pass but
+fail in error or cleanup paths. It does *local* pattern matching at the call site,
+not whole-program lifetime analysis (that's the job of TSAN, ASAN, Valgrind, and the
+Rust borrow checker).
 
 ## Vulnerable patterns
 
-- `void *p = malloc(n); memcpy(p, src, n);` — unchecked return; if
-  `malloc` returns NULL the memcpy is a NULL deref.
-- `p = realloc(p, n2);` — overwriting the original pointer in place;
-  if realloc fails it returns NULL and the original allocation
-  leaks.
-- `if (err) { free(buf); goto out; } ... out: free(buf);` — `free`
-  on both an error and the cleanup path; double-free on the error
-  branch.
-- `pthread_mutex_t m; pthread_mutex_lock(&m);` — lock used without
-  `pthread_mutex_init` (or `PTHREAD_MUTEX_INITIALIZER` at
-  declaration).
-- `FILE *f = fopen(path, "r");` without `e` mode flag, or
-  `open(path, O_RDONLY)` without `O_CLOEXEC` — the fd survives
-  `exec()` into any child the process spawns later.
-- `unsafe { let p = libc::malloc(n) as *mut u8; *p = 0; }` — Rust
-  unsafe with no NULL check on the libc return.
-- `free(p); p = NULL;` missing — frees that don't poison the
-  pointer make later use-after-free easier.
+- Allocation API (`malloc`, `calloc`, `mmap`, equivalent) whose return is used without a NULL or `MAP_FAILED` check before the next dereference
+- `realloc` whose return value overwrites the original pointer in place, leaking the original allocation if reallocation fails
+- A buffer freed on an error path that also flows through a common cleanup label that frees it again, producing a double-free
+- Mutex, rwlock, or semaphore used before its initializer (function call or static initializer macro) has run
+- File-descriptor-producing call (`fopen`, `open`, equivalent) that opens an fd which must not survive `exec()` without the close-on-exec mode or flag set
+- Rust `unsafe` block that calls a raw FFI allocation or pointer API and dereferences the result with no NULL check
+- `free` (or equivalent) on a pointer with no immediate nulling, leaving the dangling pointer available for later use-after-free
 
 ## Fix immediately
 
-When this skill invokes, rewrite the call site to check the API
-return value and place cleanup so it runs exactly once per
-allocation.
+Flag the vulnerable call site and rewrite it so the API return value is checked and
+cleanup runs exactly once per allocation. Establish these properties:
 
-**Secure pattern (C):**
+1. **Every allocation return is checked before use.** A NULL or `MAP_FAILED` return
+   turns into a controlled error path — never a silent dereference.
+2. **`realloc` results land in a temporary first.** The original pointer remains
+   valid on failure so the caller can free it deterministically; the original
+   pointer is overwritten only after success is confirmed.
+3. **Allocation cleanup has a single owner per path.** Use one cleanup label, one
+   RAII wrapper, or one `defer`/`scope_exit` — never `free` the same allocation
+   on both an error branch and a shared cleanup path.
+4. **Synchronization primitives are initialized before first use.** A static
+   initializer macro at declaration or a documented init call before the first
+   lock — never used uninitialized.
+5. **File descriptors that should not cross `exec()` are opened close-on-exec.**
+   Use the close-on-exec mode flag at open time, not a follow-up `fcntl` race.
+6. **Freed pointers are nulled at the same call site** so subsequent reads fault
+   loudly instead of silently using freed memory.
 
-```c
-void *p = malloc(n);
-if (p == NULL) {
-    return -ENOMEM;
-}
-memcpy(p, src, n);
-// ... use p ...
-free(p);
-p = NULL;
-```
-
-**Secure realloc:**
-
-```c
-void *tmp = realloc(p, n2);
-if (tmp == NULL) {
-    free(p);          // original is still valid; free it explicitly
-    return -ENOMEM;
-}
-p = tmp;
-```
-
-**Secure fopen with cloexec:**
-
-```c
-FILE *f = fopen(path, "re");   // POSIX 2024: 'e' = O_CLOEXEC
-if (f == NULL) return -errno;
-```
-
-**Why this works:** explicit NULL checks turn "the allocator failed
-silently" into a controlled error path. Stashing the realloc result
-in a temporary preserves the caller's original pointer for cleanup.
-`O_CLOEXEC` ensures the fd doesn't leak into `exec()`'d children.
+Translate these principles to the specific allocator, lock, and fd API of the
+audited file. Use the platform's documented safe forms — do not invent variants.
 
 ## Verification
 
 After rewriting, confirm:
 
-- [ ] Every `malloc`/`calloc`/`realloc`/`mmap` return is checked
-      against NULL (or `MAP_FAILED` for `mmap`) before use
-- [ ] No allocation is freed on more than one path through the
-      function (use a single cleanup label or a single
-      RAII/defer wrapper)
-- [ ] Every `pthread_mutex_lock` / `pthread_rwlock_*` /
-      `sem_wait` is preceded by a corresponding `_init` (or the
-      static initializer macro at declaration)
-- [ ] Every `fopen`/`open` for a file descriptor that should not
-      survive across `exec()` uses `O_CLOEXEC` (or `e` mode for
-      `fopen`)
-- [ ] In Rust `unsafe`, every raw pointer obtained from a C API
-      is checked for NULL before deref or `slice::from_raw_parts`
+- [ ] Every allocation return is checked against NULL (or the API's documented failure sentinel) before use
+- [ ] No allocation is freed on more than one path through the function — a single cleanup owner per allocation
+- [ ] Every synchronization primitive is initialized before its first lock or wait call
+- [ ] Every file descriptor that must not survive `exec()` is opened with the close-on-exec flag or mode at open time
+- [ ] In Rust `unsafe`, every raw pointer obtained from an FFI API is checked for NULL before dereference or slice construction
 
 ## References
 

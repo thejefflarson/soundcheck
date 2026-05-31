@@ -7,112 +7,45 @@ description: Detects unsafe privilege handling in SUID/SGID binaries, environmen
 
 ## What this checks
 
-Privileged programs (SUID/SGID, root daemons, container init)
-operate with a credentials gap. Classic mistakes: privileges
-dropped in the wrong order, environment variables trusted from
-an attacker-controlled shell, temp files where an attacker can
-symlink-swap before write. Local pattern, cross-trust-boundary
-consequence. LSMs provide defense in depth; this catches the
-source-level mistake.
+Privileged programs (SUID/SGID, root daemons, container init) operate with a
+credentials gap. Classic mistakes: privileges dropped in the wrong order, environment
+variables trusted from an attacker-controlled shell, temp files where an attacker can
+symlink-swap before write. Local pattern, cross-trust-boundary consequence. LSMs
+provide defense in depth; this catches the source-level mistake.
 
 ## Vulnerable patterns
 
-- **Drop-order**: `setuid(getuid()); ...; system(cmd);` —
-  setuid alone does not drop the saved set-user-ID on Linux;
-  the process can `seteuid(0)` itself back. Correct: `setresuid`
-  on all three IDs, in the right order, with return values
-  checked.
-- **PATH trust in privileged exec**: `system("foo")` or
-  `execlp("foo", "foo", NULL)` inside a SUID binary — `foo`
-  resolves via attacker-controlled `PATH`.
-- **LD_PRELOAD / LD_LIBRARY_PATH trust**: the dynamic linker
-  honors these even after `setuid` in some configurations; the
-  privileged binary must clear them explicitly or be compiled
-  with hardening.
-- **IFS trust**: shell helpers invoked via `system()` parse
-  arguments through `IFS`; attacker `IFS=/` mangles paths.
-- **Insecure umask**: `umask(0)` or no umask call leaves
-  created files world-writable.
-- **mktemp race**: `tmpnam(NULL)` / `tempnam(NULL, ...)` then
-  `fopen()` — attacker symlinks the returned name before fopen,
-  privileged process writes through the link.
-- **/tmp symlink-follow**: `open("/tmp/foo", O_WRONLY|O_CREAT)`
-  with no `O_NOFOLLOW`; attacker pre-creates `/tmp/foo` as a
-  symlink to `/etc/passwd`.
-- **Argv-name spoofing**: code that switches behaviour based on
-  `argv[0]` (multi-call binary) without canonicalizing — caller
-  picks the name via `execve`'s second argument.
+- Privileged process drops the effective UID only, leaving the saved set-user-ID intact so the process can regain root later.
+- Privileged exec resolves the program name via `PATH`, letting the attacker plant a lookalike earlier in the search path.
+- Privileged code inherits `LD_PRELOAD`, `LD_LIBRARY_PATH`, or `IFS` from the calling environment without scrubbing them.
+- Process runs with no umask call (or an explicit zero umask), leaving created files world-writable.
+- Temp file created via a "generate name then open" pattern (non-atomic), allowing an attacker to symlink the name in between.
+- File opened in a world-writable directory without the no-follow flag, letting the attacker pre-create the path as a symlink to a privileged target.
+- Multi-call binary that picks behavior based on `argv[0]` without canonicalizing — the caller chooses the name via `execve`'s second argument.
 
 ## Fix immediately
 
-When this skill invokes, rewrite the call site to drop privileges
-explicitly with return checks, sanitize the environment before
-exec, set a restrictive umask, and use atomic temp-file APIs with
-no-follow.
+Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
+these properties. Translate each property into the audited file's language and
+operating-system API — use the platform's documented privilege, environment, and
+filesystem calls.
 
-**Secure setresuid drop (Linux):**
-
-```c
-uid_t ruid = getuid();
-gid_t rgid = getgid();
-if (setresgid(rgid, rgid, rgid) != 0 ||
-    setresuid(ruid, ruid, ruid) != 0) {
-    abort();   // any failure here is fatal
-}
-// also verify by re-reading:
-uid_t r, e, s;
-getresuid(&r, &e, &s);
-if (r != ruid || e != ruid || s != ruid) abort();
-```
-
-**Secure privileged exec — absolute path, scrubbed env:**
-
-```c
-char *envp[] = {
-    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
-    "IFS= \t\n",
-    NULL,
-};
-execve("/usr/sbin/sendmail", argv, envp);
-```
-
-**Secure temp file:**
-
-```c
-int fd = mkostemp(template, O_CLOEXEC);
-// mkostemp creates and opens atomically; no fopen race.
-```
-
-**Secure open with no symlink follow:**
-
-```c
-int fd = open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
-```
-
-**Why this works:** `setresuid` sets all three IDs explicitly,
-checked. Absolute path + scrubbed env removes PATH/IFS/LD_*
-trust. `mkostemp` is atomic open-with-create. `O_NOFOLLOW` rejects
-the open if the final path component is a symlink.
+1. **Privilege drops set all three credential IDs explicitly and check the return.** Use the call that sets real, effective, and saved IDs in one operation; verify by re-reading afterwards. Any failure is fatal — abort rather than continue with ambiguous credentials.
+2. **Privileged execs pass an absolute path and a known environment.** Do not inherit `PATH`, `LD_*`, or `IFS` from the caller. Never use exec variants that resolve via `PATH` in privileged code.
+3. **Temp files are created with an atomic open-and-create primitive** that returns a file descriptor in one call — never "make a name, then open". Atomic creation closes the symlink-swap window.
+4. **Files opened in world-writable directories pass a no-follow flag** so the open fails if the final path component is a symlink. Combine with exclusive-create when the file should not pre-exist.
+5. **The umask is set explicitly at process start** to a restrictive value matching the intended file-mode policy. Do not rely on the inherited umask.
 
 ## Verification
 
 After rewriting, confirm:
 
-- [ ] Every privilege drop uses `setresuid` / `setresgid` (or
-      equivalent `pthread_setugid_np` on BSD) and checks the
-      return values
-- [ ] Every `execve` from privileged code passes an absolute
-      path and a known `envp[]`, never the inherited environment
-- [ ] No `system()`, `popen()`, or `execlp/execvp` in privileged
-      code paths
-- [ ] Every temp-file creation uses `mkstemp` / `mkostemp` /
-      `tmpfile` (which is atomic on glibc), never
-      `tmpnam`/`tempnam`/`mktemp`
-- [ ] Every `open()` in a world-writable directory passes
-      `O_NOFOLLOW | O_CLOEXEC` (and `O_EXCL | O_CREAT` if the
-      file should not pre-exist)
-- [ ] `umask(077)` or `umask(022)` is set explicitly at process
-      start, depending on the intended file-mode policy
+- [ ] Every privilege drop sets real, effective, and saved IDs explicitly and checks the return values
+- [ ] Every exec from privileged code passes an absolute path and a sanitized environment, never the inherited environment
+- [ ] No path-searching exec variant (the family that resolves via `PATH`) is used in privileged code paths
+- [ ] Every temp-file creation uses an atomic open-and-create primitive — never a name-then-open pattern
+- [ ] Every file open in a world-writable directory passes a no-follow flag, plus exclusive-create when the file should not pre-exist
+- [ ] The umask is set explicitly at process start to a restrictive value
 
 ## References
 

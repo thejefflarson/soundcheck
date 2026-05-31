@@ -18,46 +18,41 @@ the secret remains in git history.
 
 ## Vulnerable patterns
 
-- `API_KEY = "sk_live_abc123..."` — production API key in source
-- `password = "admin123"` — hardcoded password
-- `conn_str = "postgresql://user:pass@host/db"` — credentials in connection string
-- `private_key = "-----BEGIN RSA PRIVATE KEY-----\n..."` — embedded private key
-- `token = "ghp_xxxx..."` — GitHub personal access token in code
+- String literal that resembles a production API key, access token, or session secret assigned to a constant
+- Hardcoded password or shared-secret literal used as the only credential check
+- Connection string with embedded username and password committed to source
+- Private key material (PEM, PKCS#8, SSH) pasted inline as a string literal
+- Cloud-provider access keys, OAuth client secrets, or webhook signing keys in source or config files
 
 ## Fix immediately
 
-Flag the hardcoded secret and explain the risk. Then suggest a fix that establishes
-these properties:
+Flag the hardcoded secret and explain the risk. Translate the principles below to the
+audited file's language and deployment environment — use that stack's documented secret
+loader, env-var helper, or secrets-manager client.
+
+For each finding, establish these properties:
 
 1. **Secrets are loaded from outside the source tree.** Environment variable,
    secrets manager (AWS Secrets Manager, HashiCorp Vault, 1Password), KMS, or OS
    keystore. No string literal that resembles a real credential appears in source
    — not in code, not in config files, not in test fixtures.
 2. **Missing secrets fail loudly at load time, not silently at first use.** A
-   `getenv("API_KEY")` with no fallback, a required-field check, or an early
+   required-env lookup with no fallback, a required-field check, or an early
    fatal log guarantees a misconfigured deploy crashes immediately rather than
    running with an empty string that mysteriously fails later.
-3. **Test fixtures use obviously fake values** — `test_key_DO_NOT_USE`,
-   `sk_test_FAKE`, `changeme` — that cannot be mistaken for production
-   credentials and will never unlock a real service if leaked.
+3. **Test fixtures use obviously fake values** — placeholder strings that read as
+   "do not use" — that cannot be mistaken for production credentials and will
+   never unlock a real service if leaked.
 4. **Rotation does not require a code change.** If rotating the credential means
    editing source and redeploying, the secret is effectively hardcoded even if
    it's technically loaded through a constant. Rotation happens by updating the
    external store and restarting.
 
-Anchor — shape, not implementation:
-
-```
-API_KEY = require_env("API_KEY")       # fail fast if missing
-DB_URL  = secrets_manager.get("db/primary")
-# no string literal matching /sk_live_|ghp_|AKIA[0-9A-Z]{16}|-----BEGIN/ in source
-```
-
 ## Verification
 
 - [ ] No string literal in the code resembles a production API key, password, token, private key, or connection string with embedded credentials
 - [ ] All credentials are loaded from environment variables, secrets managers, or encrypted configuration — never from source code
-- [ ] Test fixtures use obviously fake values (e.g., `test_key_DO_NOT_USE`) that cannot be mistaken for real credentials
+- [ ] Test fixtures use obviously fake values that cannot be mistaken for real credentials
 
 ## References
 

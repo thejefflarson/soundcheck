@@ -17,56 +17,47 @@ account takeover and session hijacking.
 
 ## Vulnerable patterns
 
-- `jwt.decode(token, key, algorithms=["none"])` — algorithm confusion bypasses signature
-- `redirect_uri.startswith(allowed)` — prefix match allows `evil-example.com` bypass
-- `jwt.decode(token, key)` — no algorithm restriction or audience check
-- Storing tokens in `localStorage` — accessible to any XSS payload
-- No `state` parameter generated or validated — CSRF against OAuth flow
+- JWT decode call that accepts the `none` algorithm, or accepts an attacker-supplied algorithm header — enabling algorithm-confusion bypass.
+- `redirect_uri` validated by prefix match, substring match, or regex — letting an attacker host a lookalike domain whose URL passes the check.
+- JWT decode that omits audience (`aud`) validation — a token minted for a sibling service passes signature verification but should not be honored here.
+- Tokens stored in browser web storage (e.g. `localStorage`) where any same-origin script can read them.
+- OAuth authorization request sent with no `state` parameter, or with a `state` that is not bound to and verified against the initiating session.
 
 ## Fix immediately
 
 Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+these properties. Translate each property into the audited file's language and
+OAuth/JWT library — use the library's documented secure-by-default APIs rather
+than mirroring an example from another stack.
 
 1. **JWT verification pins algorithms to an explicit allowlist** that never
-   includes `none` and rejects switching between symmetric and asymmetric
+   includes `none` and never permits switching between symmetric and asymmetric
    families (the classic HS256/RS256 public-key-as-HMAC attack). For broader JWT
    handling guidance, see the `authentication-failures` skill.
-2. **Redirect URIs match exactly against an allowlist set.** Prefix matching
-   (`startswith`), substring matching, and regex matching all have known bypass
-   classes — `evil-example.com`, percent-encoded tricks, userinfo smuggling. The
-   only safe comparison is exact string equality against a set of registered
-   URIs.
+2. **Redirect URIs match exactly against an allowlist set.** Prefix matching,
+   substring matching, and regex matching all have known bypass classes —
+   percent-encoded tricks, userinfo smuggling, lookalike subdomains. The only
+   safe comparison is exact string equality against a set of registered URIs.
 3. **Every JWT decode validates `aud` (audience) and required claims.** A token
-   minted for a different service of the same issuer will validate the
-   signature; only the audience check catches the confused-deputy case. Require
-   `exp`, `iat`, `sub` at minimum.
+   minted for a different service of the same issuer will pass signature
+   verification; only the audience check catches the confused-deputy case.
+   Require `exp`, `iat`, `sub` at minimum.
 4. **State parameter ties the callback to the initiating session.** Generate a
    CSPRNG `state`, store it in the session before redirect, compare it on the
    callback. Without this the OAuth flow is CSRF-forgeable.
 5. **Tokens live in a Secure, HttpOnly, SameSite cookie or in memory — not
-   `localStorage`.** Web storage is readable by any same-origin script, so one
+   web storage.** Browser storage is readable by any same-origin script, so one
    XSS compromise exfiltrates every token.
-
-Anchor — shape, not implementation:
-
-```
-# callback
-require(request.state == session.pop("oauth_state"))
-require(request.redirect_uri in ALLOWED_REDIRECT_URIS)       # exact match
-claims = jwt_decode(token, pubkey,
-                    algorithms=["RS256"], audience=MY_AUD,
-                    require=["exp","iat","sub"])
-```
 
 ## Verification
 
 Confirm the response:
 
-- [ ] `algorithms=` is an explicit allowlist — never includes `"none"`
-- [ ] `redirect_uri` checked with exact match against an allowlist set
-- [ ] `audience` validated in every JWT decode call
-- [ ] `state` parameter generated and validated against stored session value
+- [ ] Algorithm parameter is an explicit allowlist and never includes `none`
+- [ ] `redirect_uri` is checked with exact-match equality against an allowlist set
+- [ ] Audience is validated in every JWT decode call
+- [ ] `state` parameter is generated, stored in session, and compared on callback
+- [ ] Tokens are not stored in browser web storage
 
 ## References
 

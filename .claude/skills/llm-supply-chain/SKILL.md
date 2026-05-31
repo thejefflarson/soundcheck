@@ -18,38 +18,35 @@ backdoors that survive retraining.
 
 ## Vulnerable patterns
 
-- `model = load("https://arbitrary-host.com/model.bin")` — no checksum verification
-- `model_id = "org/model:latest"` — floating tag silently pulls a different artifact on each run
-- No review of model card, license, or provenance before integrating a third-party model
-- Automated model updates in CI with no human approval gate
+- Model artifact downloaded from an arbitrary host or URL with no checksum or signature verification
+- Model identifier that uses a floating tag (`latest`, `main`, a mutable branch) instead of an exact pinned revision
+- Third-party model integrated with no review of model card, license, or provenance
+- Automated model-update job in CI that bumps revisions without a human approval gate
 
 ## Fix immediately
 
 Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
 these properties:
 
-1. **Model revisions are pinned to an exact commit SHA**, never `main`, `latest`,
-   or a mutable branch name. A floating tag lets the registry (or a registry
-   compromise) silently swap what you load on the next pull — including backdoored
-   weights that look identical by name.
-2. **Weight files are checksum-verified after download.** A SHA-256 of the
-   expected bytes is pinned in version control; the loader computes the digest
-   on the downloaded file and refuses to use it on mismatch. Pinning the
-   revision alone doesn't help if the artifact is served from a compromised CDN.
-3. **Model source is validated against an allowlist of approved organizations**
-   before download begins. `org/model` notation with a wildcard org field is
-   the supply-chain equivalent of `*`.
+1. **Model revisions are pinned to an exact commit SHA or content digest**, never a
+   mutable name like `main` or `latest`. A floating tag lets the registry (or a
+   registry compromise) silently swap what you load on the next pull — including
+   backdoored weights that look identical by name.
+2. **Weight files are checksum-verified after download.** A cryptographic digest
+   (SHA-256 or stronger) of the expected bytes is pinned in version control; the
+   loader computes the digest on the downloaded file and refuses to use it on
+   mismatch. Pinning the revision alone does not help if the artifact is served
+   from a compromised CDN.
+3. **Model source is validated against an allowlist of approved organizations or
+   registries** before download begins. A wildcard organization field is the
+   supply-chain equivalent of accepting any author.
 4. **Automated model updates have a human approval gate.** A CI job that bumps a
-   pinned revision without review is a backdoor delivery channel; rotate
-   revisions through PRs with signed artifacts reviewed by a human.
+   pinned revision without review is a backdoor delivery channel; rotate revisions
+   through PRs with signed artifacts reviewed by a human.
 
-Anchor — shape, not implementation:
-
-```
-require(model_id.split("/")[0] in APPROVED_ORGS)
-model = load(model_id, revision=PINNED_COMMIT_SHA)   # not "main"
-require(sha256(weight_file) == PINNED_SHA256)         # pinned in source
-```
+Translate these principles to the loader API, registry client, and CI system of the
+audited file. Use the SDK's documented pinning and verification mechanisms — do not
+implement ad-hoc checks.
 
 ## Verification
 

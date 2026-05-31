@@ -28,36 +28,29 @@ Flag the vulnerable code and explain the risk. Then suggest a fix that establish
 these properties:
 
 1. **Every inference endpoint requires authentication** — API key, bearer token,
-   or mTLS. Unauthenticated endpoints are free training data for anyone who
-   wants to clone the model.
+   or mTLS. Unauthenticated endpoints are free training data for anyone who wants
+   to clone the model.
 2. **Rate limits are keyed on the authenticated principal, not the IP.** IP-only
    throttles are defeated by rotating proxies and residential IP pools; a
-   per-user/per-key quota follows the attacker even as IPs churn.
-3. **Extraction-signal fields are stripped from responses.** `logprobs`, full
-   embedding vectors, and per-token probabilities are the primary signals
-   distillation attacks use to reconstruct a model. If a caller doesn't strictly
-   need them, don't return them.
+   per-user or per-key quota follows the attacker even as IPs churn.
+3. **Extraction-signal fields are stripped from responses.** Log-probabilities,
+   full embedding vectors, and per-token probabilities are the primary signals
+   distillation attacks use to reconstruct a model. If a caller does not strictly
+   need them, do not return them.
 4. **Query patterns are monitored for extraction signatures** — high-volume,
    low-entropy, systematic grid-search probes. Alerts fire on anomalies; the
-   handler records user identity, timestamp, and prompt for after-the-fact
-   investigation.
+   handler records user identity, timestamp, and prompt (or a content
+   fingerprint) for after-the-fact investigation.
 
-Anchor — shape, not implementation:
-
-```
-require(valid_api_key(request))                    # authenticated
-require(rate_limit.allow(request.user_id))         # per-user, not per-IP
-result = model.generate(prompt)
-log_query(user_id, prompt, result.tokens)
-detect_extraction_pattern(user_id, prompt)         # entropy-based alert
-return { text: result.text }                       # no logprobs, no embeddings
-```
+Translate each principle to the serving framework, auth provider, and rate-limiter
+of the audited file. Use the framework's documented authentication and throttling
+middleware — do not roll your own.
 
 ## Verification
 
 - [ ] Every inference endpoint requires a valid API key or bearer token
 - [ ] Rate limits are enforced per authenticated user, not per IP address
-- [ ] `logprobs`, raw embeddings, and weight data are excluded from API responses
+- [ ] Log-probabilities, raw embeddings, and weight data are excluded from API responses
 - [ ] Query logs include user identity, timestamp, and either the prompt itself or a stable fingerprint (hash, embedding, or normalized form) sufficient to detect content-pattern anomalies. Logging only metadata (length, token count, request id) without any reconstructable prompt signal does not satisfy this. Choice between raw prompt and fingerprint is a privacy tradeoff — document the decision.
 
 ## References

@@ -18,41 +18,34 @@ account takeover, and data corruption.
 
 ## Vulnerable patterns
 
-- `User.objects.create(**request.json)` — Django: all request fields written to the model
-- `BeanUtils.copyProperties(dto, entity)` — Spring: copies every matching field with no filter
-- `db.Create(&user)` after `json.Decode(body, &user)` — GORM: decoded JSON sets all struct fields including protected ones
-- `diesel::insert_into(users).values(&new_user)` where `new_user` is deserialized from the full request body without selecting fields
-- `Object.assign(dbRecord, req.body)` — Express/Node: merges all body keys into the record
+- ORM create or update call that spreads, merges, or destructures the raw request body, deserialized payload, or query parameters into the model
+- DTO-to-entity copy utility invoked with no field allowlist or exclude list, copying every matching field
+- Decoded payload bound directly into a database struct or record that includes privileged columns
+- Endpoint that lets the caller set fields like role, permissions, admin flags, verification status, balance, or tenant id from the payload
 
 ## Fix immediately
 
 Flag the vulnerable pattern and explain the risk. Then suggest a fix that establishes
 these properties:
 
-1. **No ORM create/update call receives the raw request body.** Requests land in
-   a dedicated input type (DTO, Pydantic model, typed struct, sealed class) that
-   contains only the fields external callers may set. Fields the input type
-   doesn't mention are silently dropped by the deserializer.
-2. **Privileged fields are set server-side, never from input.** `role`,
-   `permissions`, `is_admin`, `is_verified`, `balance`, `owner_id`, `tenant_id`
-   — these come from the authenticated session or database defaults, never from
-   the payload, even after "validation".
+1. **No ORM create/update call receives the raw request body.** Requests land in a
+   dedicated input type (DTO, validated schema, typed struct, sealed class) that
+   contains only the fields external callers may set. Fields the input type does
+   not mention are silently dropped by the deserializer.
+2. **Privileged fields are set server-side, never from input.** Roles, permissions,
+   admin flags, verification status, balances, owner ids, and tenant ids come
+   from the authenticated session or database defaults — never from the payload,
+   even after "validation".
 3. **DTO-to-entity copy utilities copy only named fields** or explicitly exclude
-   protected ones. A blanket `BeanUtils.copyProperties(dto, entity)` with no
-   ignore list is the exact bug — the safe form names the fields.
+   protected ones. A blanket field-by-field copy with no ignore list is the exact
+   bug — the safe form names the fields.
 4. **The allowlist lives next to the type, not scattered at call sites.** A
-   `ALLOWED = {"name", "email"}` set filtered once per endpoint is brittle; the
-   typed input pattern makes omission a compile-time (or deserialization-time)
-   guarantee.
+   filter set repeated at every endpoint is brittle; the typed input pattern
+   makes omission a compile-time (or deserialization-time) guarantee.
 
-Anchor — shape, not implementation:
-
-```
-struct CreateUserInput { name: String, email: String }   # no role, no is_admin
-input = deserialize(request.body, as=CreateUserInput)    # unknown fields dropped
-user  = User { name: input.name, email: input.email, role: DEFAULT_ROLE }
-db.insert(user)
-```
+Translate these principles to the ORM, validation library, and deserializer of the
+audited file's language. Use the framework's documented allowlist or typed-input
+mechanism — do not hand-roll field filtering at the call site.
 
 ## Verification
 

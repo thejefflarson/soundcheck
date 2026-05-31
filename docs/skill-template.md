@@ -21,33 +21,34 @@ vulnerability here is.]
 
 ## Vulnerable patterns
 
-[2-4 antipatterns. Use inline code snippets. Show real code, not pseudocode.]
+[2-5 patterns described as phrases, not code. Inline code is OK to name an API or
+keyword; avoid multi-line snippets, language-specific syntax, and library names that
+won't transfer between stacks. The auditor reads the audited file's language and
+maps these patterns into it.]
 
-- `query = "SELECT * FROM users WHERE id = " + user_id` — string concatenation into SQL
-- `subprocess.call(user_input, shell=True)` — unsanitized shell execution
-- `eval(user_provided_code)` — dynamic code evaluation from user input
+- State-changing endpoint that mutates server state without a token validated against the session
+- Subprocess call with shell expansion enabled and arguments interpolated from request input
+- Dynamic evaluation of any user-supplied string
 
 ## Fix immediately
 
-When this skill invokes, rewrite the vulnerable code using the pattern below. Explain
-what was wrong and what changed. Then continue with the original task.
+[Describe the fix as language-agnostic principles, never code. State the security
+property the fix must establish, then trust the auditor to translate to the file's
+language. No fenced code blocks. No per-framework recipes ("use Django middleware
+X") that bind the fix to one stack — say what the middleware must do instead.]
 
-**Secure pattern:**
+For each vulnerable call site, apply the appropriate control:
 
-\```language
-# Show the actual secure implementation here.
-# Must be runnable, not pseudocode.
-# If a library is required, name it.
-\```
-
-**Why this works:** [1-2 sentences explaining the security property the fix establishes.]
+- **Property 1**: [the security invariant; e.g. "user input reaches SQL only as a bound parameter, never via string interpolation"]
+- **Property 2**: [next invariant]
+- Translate to the language and framework of the audited file. Use the documented safe API for that stack; do not roll your own.
 
 ## Verification
 
-After rewriting, confirm:
+Confirm the following *properties* hold (language-agnostic):
 
-- [ ] [Specific thing to check]
-- [ ] [Specific thing to check]
+- [ ] [Specific invariant the fix establishes]
+- [ ] [Specific invariant the fix establishes]
 - [ ] No user-controlled data reaches [dangerous sink] without [sanitization/validation]
 
 ## References

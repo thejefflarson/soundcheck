@@ -18,10 +18,11 @@ compromise.
 
 ## Vulnerable patterns
 
-- `file.save(os.path.join('uploads/', file.filename))` — user-controlled filename stored directly, enabling path traversal and extension bypass
-- `Path(uploadDir).resolve().toString() + originalFilename` — original filename preserved, no extension allowlist
-- `io.Copy(dst, file)` with destination in webroot — uploaded content served directly by the web server
-- No `Content-Length` or stream-size check — attacker uploads multi-GB file to exhaust disk
+- Upload handler that writes the user-supplied filename directly to disk, enabling path traversal and extension bypass
+- Upload destination inside the web-accessible document root, so uploaded content is served directly by the web server
+- No extension allowlist, or an extension denylist that misses novel or case-varied extensions
+- No upload-size cap enforced at the framework or reverse-proxy level
+- MIME type taken from the client-supplied `Content-Type` header rather than the file's magic bytes
 
 ## Fix immediately
 
@@ -45,14 +46,9 @@ these properties:
 5. **MIME type is validated against the file's magic bytes**, not the
    `Content-Type` header the client sent — the header is attacker-controlled.
 
-Anchor — shape, not implementation:
-
-```
-require(ext(upload.filename) in ALLOWED_EXT)
-require(magic_bytes_match(upload.stream, ALLOWED_MIMES))
-name = csprng_hex() + ext(upload.filename)
-save(upload.stream, UPLOAD_DIR_OUTSIDE_WEBROOT / name)   # size cap set in framework
-```
+Translate these principles to the audited file's language and framework. Use the
+framework's documented upload-size limit, storage path configuration, and
+content-type sniffing helper — do not hand-roll path joining or extension parsing.
 
 ## Verification
 

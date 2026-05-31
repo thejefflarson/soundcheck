@@ -17,11 +17,11 @@ inject data through shared channels.
 
 ## Vulnerable patterns
 
-- `application(_:open:url:options:)` with no scheme/host allowlist — any app can invoke your URL handler
-- `<activity android:exported="true">` on sensitive screens without a permission check
-- `net.createServer(conn => handle(conn.data))` bound to `0.0.0.0` without authentication
-- Android broadcast receiver with no `android:permission` handling sensitive actions
-- XPC handler that trusts all callers without checking `connection.effectiveUserIdentifier`
+- URL scheme handler that runs an action without validating the incoming scheme, host, and path against a static allowlist
+- Exported mobile component (Android activity, service, or broadcast receiver) with no signature-level permission or caller-package check guarding a sensitive action
+- Network listener bound to a public interface for what is logically same-host IPC, with no auth token or peer-credential check before the handler acts
+- Named pipe, XPC service, or desktop-renderer IPC handler that processes a privileged request without verifying caller identity, code signature, or sender origin
+- IPC-supplied value flowing into a process-execution or dynamic-evaluation sink without validation
 
 ## Fix immediately
 
@@ -31,45 +31,36 @@ these properties:
 1. **URL scheme handlers validate scheme, host, and path against a static allowlist**
    before running any action. A custom scheme is invokable by any app on the device;
    only the handler decides what's legitimate.
-2. **Exported Android components require a signature-level permission** or verify the
-   caller package explicitly. `android:exported="true"` without `android:permission`
-   makes the component callable by anything on the phone. Intent extras are
+2. **Exported components require a signature-level permission** or verify the caller
+   package explicitly. An exported component with no permission gate is callable by
+   anything on the device. Intent extras and equivalent caller-supplied payloads are
    validated against a schema before use.
-3. **Network listeners bind to the narrowest interface that works.** Unix domain
-   sockets or `127.0.0.1`/`::1`, never `0.0.0.0`, when the listener is for
-   same-host IPC. An auth token or peer-cred check runs before the handler acts
-   on any command.
-4. **Named pipes and XPC services verify caller identity** via
-   `effectiveUserIdentifier`, code-signing requirement, or pipe ACL before any
-   privileged action. Electron/renderer IPC handlers check
-   `event.senderFrame.url` against an origin allowlist with context isolation on.
-5. **No IPC-supplied value reaches `exec` / `eval` / `Runtime.exec` unvalidated.**
-   The channel is an attacker-reachable surface; treat its payloads like network
-   input.
+3. **Network listeners bind to the narrowest interface that works.** Use a Unix
+   domain socket or loopback address, never a public-facing bind, when the listener
+   is for same-host IPC. An auth token or peer-credential check runs before the
+   handler acts on any command.
+4. **Named pipes, XPC services, and desktop-renderer IPC handlers verify caller
+   identity** — effective user ID, code-signing requirement, pipe ACL, or sender
+   origin against an allowlist — before any privileged action. Renderer-to-main
+   channels run with context isolation enabled and node integration disabled.
+5. **No IPC-supplied value reaches a process-execution or dynamic-evaluation sink
+   unvalidated.** The channel is an attacker-reachable surface; treat its payloads
+   like network input.
 
-Anchor — shape, not implementation:
-
-```
-# URL scheme
-require(url.scheme in ALLOWED_SCHEMES and url.host in ALLOWED_HOSTS)
-
-# exported Android component  →  android:permission="com.example.INVOKE" (signature-level)
-
-# socket listener
-server = listen_unix("/var/run/app.sock")   # not 0.0.0.0
-require(peer_cred_ok(conn) or valid_token(conn.read(32)))
-```
+Translate each principle to the language, platform, and IPC mechanism of the audited
+file. Use the platform's documented identity-verification and binding APIs — do not
+invent your own.
 
 ## Verification
 
 Confirm the following *properties* hold for every IPC surface present in the change (criteria only apply when the relevant pattern exists):
 
-- [ ] For every URL scheme handler present (iOS `application(_:open:url:)`, Android `<intent-filter>` with custom scheme, Windows protocol handler): the scheme, host, and path are validated against a static allowlist before any action runs
-- [ ] For every exported Android component present (`android:exported="true"` activity, service, or `BroadcastReceiver`): the component is protected by `android:permission` with `android:protectionLevel="signature"`, or the receiver explicitly verifies the caller package, and sensitive Intent extras are validated against a schema before use
-- [ ] For every desktop IPC socket present (Node `net.createServer`, Python `socket`, Go `net.Listen`): the listener binds to a Unix domain socket or `127.0.0.1`/`::1` — never `0.0.0.0` or a public interface — and requires an auth token or peer-cred check before handling commands
-- [ ] For every Electron/renderer IPC handler present (`ipcMain.handle`, `ipcMain.on`): the handler verifies `event.senderFrame.url` origin against an allowlist, and `contextIsolation` is enabled with `nodeIntegration` disabled
-- [ ] For every named pipe or XPC service handler present (Windows named pipe, macOS `NSXPCListener`, `xpc_connection_set_event_handler`): the caller identity is verified via `connection.effectiveUserIdentifier`, code-signing requirement, or pipe ACL before privileged actions run
-- [ ] No `exec`/`eval`/`Runtime.exec` is called with unvalidated IPC-supplied input on any of the above surfaces
+- [ ] Every URL scheme handler validates scheme, host, and path against a static allowlist before any action runs
+- [ ] Every exported mobile component is protected by a signature-level permission or explicitly verifies the caller package, and caller-supplied payload fields are validated against a schema before use
+- [ ] Every same-host IPC socket binds to a Unix domain socket or loopback address — never a public interface — and requires an auth token or peer-credential check before handling commands
+- [ ] Every renderer-to-main or cross-process IPC handler verifies sender origin or caller identity against an allowlist and runs with context isolation enabled
+- [ ] Every named pipe or platform RPC handler verifies caller identity (effective user id, code-signing requirement, or ACL) before privileged actions run
+- [ ] No process-execution or dynamic-evaluation sink is called with unvalidated IPC-supplied input on any of the above surfaces
 
 ## References
 

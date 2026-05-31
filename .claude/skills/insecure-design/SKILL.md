@@ -17,15 +17,19 @@ fraud, and privilege escalation.
 
 ## Vulnerable patterns
 
-- `def login(user, pw): ...` — no rate limiting or lockout
-- `if step == "confirm_payment": process()` — client-supplied step skips validation
-- `if user_exists: "Invalid password" else: "User not found"` — reveals account existence
-- Sensitive action (email change, fund transfer) with no re-authentication
+- Credential-accepting endpoint (login, password reset, MFA verify) with no rate limit or lockout
+- Multi-step workflow that advances based on a client-supplied step name or boolean rather than server-side state
+- Authentication failure response that distinguishes "user not found" from "wrong password" via message text, status code, or timing
+- Sensitive state change (email change, fund transfer, account deletion) protected only by session existence — no re-auth or step-up challenge
+- Security-relevant decision (lockout status, role, authorization level) read from a request parameter, cookie, or header the client can freely modify
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+Flag the vulnerable code and explain the risk. Translate the principles below to the
+audited file's language, web framework, and rate-limiter or session library — use that
+stack's documented middleware rather than rolling your own.
+
+For each finding, establish these properties:
 
 1. **Every credential-accepting endpoint has a rate limit or lockout keyed on a
    caller-controlled identifier** (IP, username, email, or account id). Apply to
@@ -33,32 +37,17 @@ these properties:
    re-auth — not just login. Unlimited retries are never acceptable.
 2. **Authentication failure responses do not distinguish "user not found" from
    "wrong password"** — same message, same status code, same timing. Always
-   compute the hash even when the user is missing (compare against a dummy hash
-   to equalize latency); short-circuit branches leak account existence.
+   compute the password hash even when the user is missing (compare against a
+   dummy hash to equalize latency); short-circuit branches leak account existence.
 3. **Sensitive state changes (password change, email change, fund transfer, account
    deletion, permission grant) require a check stronger than "session exists"** —
    re-prompt for the current password, verify a step-up token, or require MFA.
 4. **Multi-step workflows read the current step from server-side state** —
-   session, database, or a signed token — never from a client-supplied parameter
-   like `?step=confirm`. The server owns the progression.
+   session, database, or a signed token — never from a client-supplied parameter.
+   The server owns the progression.
 5. **No security-relevant decision (lockout status, step progression,
    authorization level) is read from request parameters, cookies, or headers that
    the client can freely modify.**
-
-Anchor — shape, not implementation:
-
-```
-endpoint login(user, pw, ip):
-    require(rate_limiter.allow("login:" + ip))           # every cred endpoint
-    require(not is_locked(user))
-    valid = constant_time_compare(hash(pw), stored_or_dummy)
-    if not valid: record_failure(user); respond_uniform_error()
-    ...
-
-endpoint change_email(new_email, current_pw):
-    require(reauth(session.user, current_pw))            # step up, not just session
-    ...
-```
 
 ## Verification
 

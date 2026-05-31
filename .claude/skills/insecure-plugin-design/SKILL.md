@@ -18,15 +18,19 @@ exfiltration.
 
 ## Vulnerable patterns
 
-- Tool handler accepts raw `str` path parameter with no allowlist — enables path traversal
-- No authorization check inside the tool function itself (relies only on the LLM to decide)
-- Tool schema uses `"type": "string"` with no `enum`, `maxLength`, or pattern constraints
-- A single tool exposes read + write + delete with no scope separation
+- Tool handler accepts an unconstrained string parameter (path, URL, query) with no allowlist, regex, or length cap
+- Tool schema declares parameters with no `enum`, `maxLength`, `pattern`, or `additionalProperties: false` constraints
+- Authorization decision delegated to the LLM rather than enforced inside the tool handler against the invoking principal
+- Single tool multiplexes read, write, and delete behind an `action` parameter instead of separate handlers
+- Tool invocation produces no audit record naming the principal, tool, and sanitized arguments
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+Flag the vulnerable code and explain the risk. Translate the principles below to the
+audited file's language, tool-definition schema, and authorization framework — use
+that stack's documented validation and access-control APIs.
+
+For each finding, establish these properties:
 
 1. **Every tool input is constrained at the tool boundary.** JSON Schema keywords
    (`maxLength`, `pattern`, `enum`, `additionalProperties: false`), a typed enum
@@ -38,26 +42,14 @@ these properties:
    it cannot be trusted to gate its own actions.
 3. **File and path identifiers are canonicalized and verified against an explicit
    root.** Resolve the path, then check that the resolved target falls inside the
-   allowed directory. Path traversal (`../`), symlink escape, and absolute-path
-   injection all fail this check.
+   allowed directory. Path traversal, symlink escape, and absolute-path injection
+   all fail this check.
 4. **Tools expose the narrowest capability that satisfies their purpose.** Read,
    write, and delete live in separate handlers, not multiplexed behind an
    `action` parameter. Narrow tools are easier to audit and harder to weaponize.
 5. **Every invocation produces an audit record** containing the principal, the
    tool name, and sanitized parameters — written before the side-effecting
    operation returns.
-
-Anchor — shape, not implementation:
-
-```
-schema: { filename: { type: string, maxLength: 128, pattern: "^[\\w-]+\\.(txt|csv)$" } }
-def read_file(filename, *, caller):
-    require(caller.has_permission("file:read"))
-    target = (ALLOWED_ROOT / filename).resolve()
-    require(target.is_relative_to(ALLOWED_ROOT))
-    audit_log("read_file", caller.id, filename)
-    return target.read()
-```
 
 ## Verification
 

@@ -96,10 +96,19 @@ Every skill must include at least one CWE reference in the References section. C
 
 ### Action section — "Fix immediately" or "Procedure"
 
-Fix-oriented skills use `## Fix immediately` and must contain a **concrete secure
-pattern** showing the correct approach. Skills detect and explain vulnerabilities
-but do not auto-rewrite code — they flag the issue, explain the risk, and show the
-secure pattern as a suggestion. Use `/security-cleanup` to apply fixes interactively.
+Fix-oriented skills use `## Fix immediately` to describe the fix as **language-agnostic
+principles** — never code blocks or per-language recipes. Each principle states the
+security property the fix must establish (e.g. "use parameterized queries, never string
+concatenation") and trusts the model to translate to the audited file's language. No
+fenced code blocks. No library names except as illustrative parentheticals. The
+language-mismatch problem (e.g. recommending a Node library in a Go project) is the
+failure mode this rule prevents. Skills detect and explain vulnerabilities but do not
+auto-rewrite code. Use `/security-cleanup` to apply fixes interactively.
+
+Vulnerable patterns are also described as patterns, not code: bullet phrases like
+"state-changing form with no CSRF token field" beat `<form method="POST">` snippets.
+Inline code is fine for naming an API or function (`eval`, `SameSite`) but avoid
+literal multi-line code in either `## Vulnerable patterns` or `## Fix immediately`.
 
 Analysis/orchestration skills (hotspots, threat-model, security-review,
 security-cleanup) use `## Procedure` instead. The procedure must be concrete:

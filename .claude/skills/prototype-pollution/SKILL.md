@@ -18,50 +18,42 @@ bypass, and remote code execution in some frameworks.
 
 ## Vulnerable patterns
 
-- `_.merge(config, userInput)` — lodash merge recurses into `__proto__`
-- `Object.assign(target, JSON.parse(body))` — copies `__proto__` key if present
-- `function deepMerge(t, s) { for (k in s) t[k] = ... }` — custom merge without key filter
-- `obj[req.body.key] = req.body.value` — dynamic property set on arbitrary key
+- Deep merge of user input into a config or options object using a library helper that recurses through `__proto__`.
+- `Object.assign` or spread of a parsed JSON body into a target object — the `__proto__` key is copied as a regular property and walked by the engine.
+- Custom recursive merge that iterates source keys with no filter — `__proto__` and `constructor.prototype` are merged in alongside everything else.
+- Dynamic property assignment where both the key and the value come from user input, with no key validation.
 
 ## Fix immediately
 
 Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+these properties. The audited file is JavaScript or TypeScript by definition, so the
+principles translate directly — apply them using the project's existing utility
+library and module conventions.
 
 1. **Any recursive merge, clone, or property copy on user input filters the
    dangerous keys** — `__proto__`, `constructor`, `prototype`. The filter runs
-   before assignment, not after; a post-hoc `delete obj.__proto__` doesn't help
-   because the prototype chain was already mutated.
-2. **Dynamic property assignment (`obj[userKey] = value`) validates the key
-   against a blocklist**, or sidesteps the issue by using a `Map` instead. A
-   `Map` has no prototype chain exposure; `obj[userKey]` does.
-3. **Config and lookup objects use `Object.create(null)` when keys come from
-   input.** A null-prototype object cannot be polluted because there is no
-   prototype chain to reach.
-4. **Lodash `_.merge`, `_.set`, and jQuery `$.extend(true, …)` on untrusted
-   input are replaced** with key-filtered wrappers or safe alternatives. The
-   issue is library-version-dependent, so relying on patched versions is
-   fragile; filter at the call site.
+   before assignment, not after; a post-hoc delete does not help because the
+   prototype chain was already mutated.
+2. **Dynamic property assignment from user input validates the key against a
+   blocklist**, or sidesteps the issue by using a `Map`. A `Map` has no
+   prototype-chain exposure; object indexing does.
+3. **Config and lookup objects use a null-prototype object when keys come from
+   input.** An object created with no prototype cannot be polluted because
+   there is no prototype chain to reach.
+4. **Library deep-merge helpers (`_.merge`, `_.set`, `$.extend(true, …)`) on
+   untrusted input are replaced** with key-filtered wrappers or safe
+   alternatives. The issue is library-version-dependent, so relying on patched
+   versions is fragile; filter at the call site.
 
-Anchor — shape, not implementation:
-
-```
-const BAD = new Set(["__proto__", "constructor", "prototype"]);
-function safeMerge(t, s) {
-  for (const k of Object.keys(s)) {          // not `for ... in`
-    if (BAD.has(k)) continue;
-    t[k] = (isObj(s[k]) && isObj(t[k])) ? safeMerge(t[k], s[k]) : s[k];
-  }
-  return t;
-}
-// or: const config = Object.create(null);   // no prototype to pollute
-```
+When iterating source keys, use the own-keys iterator (e.g. `Object.keys`),
+never the prototype-walking variant.
 
 ## Verification
 
 - [ ] No deep merge, clone, or recursive property copy on user-controlled input proceeds without filtering `__proto__`, `constructor`, and `prototype` keys
-- [ ] Dynamic property assignment from user input (`obj[userKey] = value`) validates the key against a blocklist or uses `Map` instead
-- [ ] If lodash is used, `_.merge` on untrusted input is replaced with a safe alternative or key-filtered wrapper
+- [ ] Dynamic property assignment from user input validates the key against a blocklist or uses `Map` instead
+- [ ] If a library deep-merge helper is used, it is replaced or wrapped with a key filter before being applied to untrusted input
+- [ ] Iteration uses an own-keys iterator, not a prototype-walking one
 
 ## References
 

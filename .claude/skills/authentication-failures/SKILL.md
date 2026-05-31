@@ -18,10 +18,11 @@ and persist after credential rotation.
 
 ## Vulnerable patterns
 
-- `jwt.decode(token, "secret", algorithms=["HS256"])` — weak or hardcoded JWT secret
-- `jwt.decode(token, options={"verify_signature": False})` — signature bypass
-- `db.delete_session` missing on logout — session persists after sign-out
-- No rate limiting or lockout on login attempts — credential stuffing enabled
+- JWT verification call with a weak, short, or hardcoded signing secret
+- JWT decode that disables signature verification or accepts the `none` algorithm
+- Logout handler that does not invalidate the session or token server-side
+- Login flow with no rate limiting or account lockout, allowing credential stuffing
+- Password or API-key comparison using a non-constant-time equality operator
 
 For password hashing issues (MD5/SHA), see `cryptographic-failures`.
 For hardcoded API keys/passwords in source, see `hardcoded-secrets`.
@@ -33,33 +34,22 @@ these properties:
 
 1. **Signing keys come from outside the source tree** — environment variable, secret
    manager, or KMS. Enforce a minimum length or entropy check at load time so a
-   misconfigured deploy fails loudly rather than silently using a 4-byte secret.
+   misconfigured deploy fails loudly rather than silently using a tiny secret.
 2. **JWT verification pins the accepted algorithm(s) to an explicit allowlist**
    that rejects `none` and rejects algorithm switching between symmetric and
    asymmetric families (the classic HS256-vs-RS256 public-key-as-HMAC attack).
-   Whether expressed as `algorithms=[...]`, `.withAlgorithm(...)`,
-   `Validation::new(Algorithm::HS256)`, or equivalent, the check must be
-   algorithm-specific.
+   The check must be algorithm-specific, however the library expresses it.
 3. **Logout invalidates credentials server-side.** Either delete a server session
-   record, add the token to a revocation list (DB, Redis, in-memory set), or
-   rotate a per-user signing key. Short token expiry alone does not satisfy this
-   — a stolen token works until it expires. The code must demonstrate an active
-   revocation mechanism.
-4. **Password comparisons and API-key comparisons are constant-time** — use
-   `hmac.compare_digest` or the language equivalent, never `==`.
+   record, add the token to a revocation list, or rotate a per-user signing key.
+   Short token expiry alone does not satisfy this — a stolen token works until
+   it expires. The code must demonstrate an active revocation mechanism.
+4. **Password and API-key comparisons are constant-time** — use the language's
+   documented constant-time comparison primitive, never a plain equality operator.
 5. **Login has a rate limit or lockout.** Credential stuffing is cheap; unbounded
    guess rates make every leaked password list a working brute-force dictionary.
 
-Anchor — shape, not implementation:
-
-```
-secret = getenv("JWT_SECRET"); require(len(secret) >= 32)     # loaded + checked
-token  = encode(claims, secret, alg=HS256)                    # exp set
-decoded = decode(token, secret, algorithms=[HS256])           # alg pinned
-
-logout(token): revocation.add(token)                          # server-side invalidation
-verify(t):    return t not in revocation and decode(t)        # revocation checked
-```
+Translate these principles to the audited file's language and framework. Use the
+documented authentication and crypto APIs for that stack; do not roll your own.
 
 ## Verification
 

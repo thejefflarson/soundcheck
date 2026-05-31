@@ -17,9 +17,10 @@ For SSRF (server-side request forgery), see the dedicated `ssrf` skill.
 
 ## Vulnerable patterns
 
-- `resource = db.get(request.params.id)` — fetches any record without verifying caller owns it
-- `app.delete("/admin/user/:id", handler)` — admin endpoint with no role middleware
-- `if user.id == id: return resource` — ownership check placed after the data is already fetched and potentially acted on
+- Resource lookup by caller-supplied identifier with no ownership predicate before the row is returned, mutated, or acted on
+- Privileged or admin route mounted with no role check at the route/controller declaration
+- Ownership check that runs after the resource has already been fetched and consumed by downstream logic
+- Ownership failure that responds with a distinct "forbidden" status, leaking that the resource exists
 
 ## Fix immediately
 
@@ -38,20 +39,12 @@ these properties:
    invisible at a glance.
 3. **Ownership failures return an indistinguishable "not found" response (HTTP 404).**
    Returning 403 leaks that the resource exists. Role-missing failures on a privileged
-   route (e.g. `/admin/*`) may still return 403 — the route itself is public
-   knowledge, so only the *instance-level* check needs to hide behind 404.
+   route may still return 403 — the route itself is public knowledge, so only the
+   *instance-level* check needs to hide behind 404.
 
-Anchor — shape, not implementation:
-
-```
-# resource fetch — ownership gate before returning data
-row = db_get(Resource, id)
-if row is None or row.owner_id != caller.id:
-    return 404                        # not 403 — hide existence
-
-# privileged route — role gate as route-level middleware
-router.delete("/admin/user/:id", require_role("admin"), delete_user)
-```
+Translate these principles to the audited file's language and framework. Use the
+documented authorization or policy mechanism for that stack; do not invent ad-hoc
+checks in handler bodies.
 
 ## Verification
 

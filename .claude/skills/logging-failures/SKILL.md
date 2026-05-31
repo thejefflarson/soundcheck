@@ -17,11 +17,11 @@ vulnerabilities; CRLF injection lets attackers forge log entries.
 
 ## Vulnerable patterns
 
-- `logger.info(f"Login attempt: {username} / {password}")` — password written to log
-- No log entry on authentication failure — attacks go undetected
-- `logger.debug(request.json())` — full request body with PII or tokens
-- `logger.info(user_input)` — CRLF injection forges log lines (`\n[CRITICAL] admin logged in`)
-- Unstructured string logs that can't be parsed or alerted on by SIEM tools
+- Log statement that interpolates a credential, token, or other secret as a value
+- Authentication failure, authorization denial, or privileged action that exits without producing a log record
+- Log call that dumps a full request body, response, or other payload containing PII or tokens
+- User-controlled string interpolated into a log line without CRLF/newline stripping, allowing forged log entries
+- Unstructured string logs that a SIEM cannot reliably parse or alert on
 
 ## Fix immediately
 
@@ -32,41 +32,37 @@ these properties:
    Authentication outcomes, authorization outcomes, privileged actions — no branch
    silently exits. A successful login and a failed login should both produce a
    record; a missing failure log is as bad as no logging at all.
-2. **Credential-like fields never appear as values.** Names like `password`, `token`,
-   `secret`, `authorization`, `api_key`, `session`, `credit_card`, `ssn` are either
-   omitted or redacted before the log call. Do this at the logger, not at every
-   call site — a forgotten call site is a guaranteed leak.
+2. **Credential-like fields never appear as values.** Names like password, token,
+   secret, authorization, api_key, session, credit_card, ssn are either omitted or
+   redacted before the log call. Do this at the logger, not at every call site — a
+   forgotten call site is a guaranteed leak.
 3. **Every user-controlled string passes through a CRLF/newline stripping step
    before reaching the log sink** — including fields that "look safe" like
-   usernames, and including any dedicated `actor`/`subject`/`user_id` parameter
-   (not just fields passed through `**kwargs`). A username with
-   `\n[CRITICAL] admin logged in` forges log lines whether it arrives as a
-   positional argument or a kwarg.
-4. **Records are structured key/value data (JSON, structured fields) — not an
-   interpolated message string.** A SIEM has to regex-parse a message string, and
-   regex-parsers miss things attackers can exploit.
+   usernames, and including any dedicated actor/subject/user-id parameter. A
+   username containing an embedded newline followed by a forged event prefix
+   smuggles fake log lines whether it arrives as a positional argument or a
+   keyword argument.
+4. **Records are structured key/value data — not an interpolated message string.**
+   A SIEM should be able to read fields directly; a regex-parsed message string
+   misses things attackers can exploit.
 5. **Each record carries an event-type identifier and an actor identifier.** The
    actor is a non-null field naming who or what triggered the event — a user id,
-   session id, `"anonymous"`, or `"system"` for server-initiated jobs. Never silently
-   omitted.
+   session id, an explicit anonymous marker, or a system marker for
+   server-initiated jobs. Never silently omitted.
 
-Anchor — shape, not implementation:
-
-```
-log.security_event("auth.failure", actor=username)        # CRLF-stripped, no password
-log.security_event("auth.success", actor=user.id)
-log.security_event("authz.denied", actor=user.id, resource=id)
-```
+Translate each principle to the logging framework and structured-logger conventions
+of the audited file's language. Use the framework's documented structured-event API
+— do not hand-build log lines from string interpolation.
 
 ## Verification
 
 Confirm these properties hold (language-agnostic):
 
-- [ ] Every security-relevant decision point in the rewritten code (authentication outcome, authorization outcome, privileged action) emits exactly one log record — no branch silently exits without logging
-- [ ] Credential-like field names (password, passwd, token, secret, authorization, api_key, session) never appear as values in any log record — they are either omitted or replaced with a redaction marker before the log call
-- [ ] Every user-controlled string value reaching a log sink passes through a CRLF/newline stripping step — no field is interpolated raw, including ones that "look safe" like usernames and including dedicated `actor`/`subject`/`user_id` parameters (not only fields in `**kwargs`)
-- [ ] Log records are emitted as structured key/value data (JSON object, structured logger fields, or equivalent) — not as a single interpolated message string that a SIEM would have to regex-parse
-- [ ] Each record carries an event-type identifier and an actor identifier — a non-null field naming who or what triggered the event (user id, session id, `"anonymous"`, or `"system"` for server-initiated jobs). The actor field is never silently omitted from any security event.
+- [ ] Every security-relevant decision point (authentication outcome, authorization outcome, privileged action) emits exactly one log record — no branch silently exits without logging
+- [ ] Credential-like field names (password, token, secret, authorization, api_key, session) never appear as values in any log record — they are omitted or redacted before the log call
+- [ ] Every user-controlled string reaching a log sink passes through a CRLF/newline stripping step — including fields that look safe like usernames, and including dedicated actor/subject/user-id parameters
+- [ ] Log records are emitted as structured key/value data — not as a single interpolated message string that a SIEM would have to regex-parse
+- [ ] Each record carries an event-type identifier and a non-null actor identifier (user id, session id, anonymous marker, or system marker for server-initiated jobs)
 
 ## References
 

@@ -24,37 +24,16 @@ model behavior in ways that are difficult to detect after training completes.
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+Flag the vulnerable code, explain the risk, and suggest a fix establishing these
+properties. Translate to the data-loading and validation libraries of the audited file
+— use that stack's documented hashing, schema, and dataframe APIs; do not import a
+recipe from a different stack.
 
-1. **Every external dataset file is checksum-verified before use.** A pinned
-   SHA-256 in version control; the loader computes the digest on load and
-   refuses to proceed on mismatch. Pinning a URL or version alone doesn't help
-   when the bytes behind them change.
-2. **Every example passes content validation** before entering the training
-   set: type and length checks, disallowed-pattern filtering (injection tokens
-   like `ignore previous`, `<|im_start|>`, jailbreak signatures), and
-   encoding/Unicode sanity. Invalid examples are dropped, not silently used.
-3. **Duplicates are removed before training.** Poisoning attacks often batch
-   the same backdoor trigger across many examples; deduplication by content
-   hash limits the leverage of a single injected payload.
-4. **Label distribution is checked and alerts fire on imbalance** above a
-   threshold. A sudden 80%-one-class shift is a statistical signature of
-   bulk-inserted poison; it's cheap to catch at ingestion and impossible to
-   reverse after training.
-5. **Train and validation splits come from disjoint sources or time windows.**
-   Reusing the same split for both hides distribution shift and lets poisoned
-   examples score well on validation.
-
-Anchor — shape, not implementation:
-
-```
-require(sha256(dataset_file) == PINNED_SHA256)
-rows    = [r for r in parse(dataset_file) if validate(r)]        # per-example
-unique  = dedupe_by_hash(rows)
-require(max_class_fraction(unique) < 0.8)                         # anomaly gate
-train, val = split_by_source(unique, val_fraction=0.1)
-```
+1. **Every external dataset file is checksum-verified before use.** A pinned SHA-256 in version control; the loader computes the digest on load and refuses to proceed on mismatch. Pinning a URL or version alone does not help when the bytes behind them change.
+2. **Every example passes content validation** before entering the training set: type and length checks, disallowed-pattern filtering for known injection or jailbreak markers, and encoding/Unicode sanity. Invalid examples are dropped, not silently used.
+3. **Duplicates are removed before training.** Poisoning attacks often batch the same backdoor trigger across many examples; deduplication by content hash limits the leverage of a single injected payload.
+4. **Label distribution is checked and alerts fire on imbalance** above a threshold. A sudden one-class shift is a statistical signature of bulk-inserted poison; it is cheap to catch at ingestion and impossible to reverse after training.
+5. **Train and validation splits come from disjoint sources or time windows.** Reusing the same split for both hides distribution shift and lets poisoned examples score well on validation.
 
 ## Verification
 
@@ -64,6 +43,7 @@ Confirm the response:
 - [ ] Every training example passes content validation (length limits, disallowed-pattern filtering)
 - [ ] Duplicates are removed before training starts
 - [ ] For every dataset with categorical labels present, class distribution is checked and alerted on imbalance above a threshold
+- [ ] Train and validation splits come from disjoint sources or time windows
 
 ## References
 

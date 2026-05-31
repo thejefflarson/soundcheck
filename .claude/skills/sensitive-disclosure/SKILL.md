@@ -17,40 +17,24 @@ prompts — to current users, future users, or via model extraction.
 
 ## Vulnerable patterns
 
-- `system_prompt = f"User record: {json.dumps(user)}"` — full user object (SSN, DOB, email) in prompt
-- `OPENAI_API_KEY` or DB passwords hardcoded or interpolated into system prompts
-- Returning raw LLM responses that may echo back data from the system prompt
-- Storing full conversation history (with PII) in shared memory/vector store across sessions
+- Whole user or account records interpolated into a system or user prompt
+- API keys, database passwords, or other credentials baked into prompt strings
+- Returning raw LLM responses to callers without an output-redaction gate — the response can echo data injected via retrieval or memory
+- Conversation history or vector-store writes that mix multiple users' content without partitioning by user identity
+- Logging or telemetry that emits prompts and completions unredacted
 
 ## Fix immediately
 
-Flag the vulnerable code and explain the risk. Then suggest a fix that establishes
-these properties:
+Flag the vulnerable code, explain the risk, and suggest a fix establishing these
+properties. Translate to the language and framework of the audited file — use that
+stack's secrets manager, logging library, and redaction helpers; do not import names
+from a different stack.
 
-1. **PII is redacted or pseudonymized before it reaches the model.** Replace raw
-   records with opaque identifiers ("user_id=42" instead of the row), or scrub
-   values matching known sensitive patterns (SSN, email, card numbers) through a
-   redaction step. "Don't repeat personal details" in the prompt is not sufficient.
-2. **No credentials appear in prompt strings.** Load them from environment variables
-   or a secrets manager and keep them server-side — never interpolate into a system
-   prompt, even "just for auth context".
-3. **Every return site for the LLM response passes through an output-redaction gate**
-   before the response leaves the process. This catches data that leaked through
-   retrieval or memory.
-4. **If the code persists conversation history or writes to a memory/vector store,**
-   records are keyed or partitioned by user identity so one session's context
-   cannot be retrieved by another.
-5. **If prompts or completions are logged**, they go through the same redaction
-   helper before emission — otherwise logs become the leak.
-
-Anchor — shape, not implementation:
-
-```
-safe_q  = redact(user_question)
-prompt  = f"Answer for user_id={user.id}: {safe_q}"     # reference, not record
-raw     = call_llm(system=DEV_INSTRUCTIONS, user=prompt)
-return redact(raw)                                       # every return site
-```
+1. **PII is redacted or pseudonymized before it reaches the model.** Replace raw records with opaque identifiers, or scrub values matching known sensitive patterns (SSN, email, card numbers, health identifiers). A prompt-level instruction like "don't repeat personal details" is not sufficient.
+2. **No credentials appear in prompt strings.** Load them server-side from environment or a secrets manager and never interpolate into a system prompt — even "just for auth context".
+3. **Every return site for an LLM response passes through an output-redaction gate** before the response leaves the process. This catches data that leaked in via retrieval or memory.
+4. **If conversation history or a memory/vector store is persisted**, records are keyed or partitioned by user identity so one session's context cannot be retrieved by another.
+5. **If prompts or completions are logged**, the same redaction helper runs before emission — otherwise logs become the leak.
 
 ## Verification
 
@@ -58,10 +42,10 @@ Confirm these properties hold for every relevant pattern present in the code und
 review (each criterion applies only when its pattern is actually present):
 
 - [ ] No PII field (SSN, DOB, email, phone, address, health record) reaches an LLM API call site without first passing through a redaction or pseudonymization step
-- [ ] System prompts contain only constants loaded from a secrets-manager or environment-backed config, never hardcoded credential literals or interpolated secret values — only applies if the code references credentials (API keys, DB passwords) near the prompt construction
+- [ ] System prompts contain only constants loaded from a secrets-manager or environment-backed config, never hardcoded credential literals or interpolated secret values — only applies if the code references credentials near the prompt construction
 - [ ] Every code path that returns an LLM response to a caller routes the response through an output-redaction helper before it leaves the process
-- [ ] If the code persists conversation history or writes to a memory/vector store, records are keyed or partitioned by user identity so one session's context cannot be retrieved by another — skip this criterion when the code is a stateless single-request handler with no history/memory
-- [ ] If the code contains logging or telemetry statements that receive a prompt or completion variable, the variable is passed through a redaction helper before emission — skip this criterion when the code has no logging of prompts or completions
+- [ ] If the code persists conversation history or writes to a memory/vector store, records are keyed or partitioned by user identity so one session's context cannot be retrieved by another — skip when the code is a stateless single-request handler
+- [ ] If the code contains logging or telemetry statements that receive a prompt or completion variable, the variable is passed through a redaction helper before emission — skip when the code has no logging of prompts or completions
 
 ## References
 

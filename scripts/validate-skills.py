@@ -33,6 +33,12 @@ OWASP_PATTERN = re.compile(r"(A\d{2}:\d{4}|LLM\d{2}:\d{4}|API\d+:\d{4})")
 CWE_PATTERN = re.compile(r"CWE-\d+")
 MAX_WORDS = 600
 
+# Skills describe principles, not language-specific examples. Fenced code
+# blocks in these sections caused haiku to echo Node-only library names into
+# Go fixes (gitea benchmark, 2026-05-29). See CLAUDE.md Skill Authoring
+# Conventions. Inline code (single backticks) for API names is fine.
+FENCED_BLOCK_DENY_SECTIONS = ("## Vulnerable patterns", "## Fix immediately")
+
 
 def parse_frontmatter(text: str) -> dict:
     """Extract YAML-style frontmatter fields from the skill file."""
@@ -69,6 +75,18 @@ def count_words(text: str) -> int:
         if end != -1:
             body = text[end + 4:]
     return len(body.split())
+
+
+def section_body(text: str, header: str) -> str:
+    """Return text between `header` and the next `## ` heading (or EOF)."""
+    idx = text.find(header)
+    if idx == -1:
+        return ""
+    start = idx + len(header)
+    next_header = re.search(r"\n## ", text[start:])
+    if next_header:
+        return text[start:start + next_header.start()]
+    return text[start:]
 
 
 def validate_skill(skill_dir: Path) -> list[str]:
@@ -124,6 +142,18 @@ def validate_skill(skill_dir: Path) -> list[str]:
         violations.append(
             f"No test case found at docs/test-cases/{name}.*"
         )
+
+    # 8. No fenced code blocks in `## Vulnerable patterns` or `## Fix
+    #    immediately`. Skills describe principles; the auditor maps them to
+    #    the audited file's language. Code blocks lead to language-mismatch
+    #    fix recommendations (Node libs cited in Go projects).
+    for section in FENCED_BLOCK_DENY_SECTIONS:
+        body = section_body(text, section)
+        if re.search(r"^```", body, re.MULTILINE):
+            violations.append(
+                f"Section {section!r} contains a fenced code block — "
+                "skills describe principles, not language-specific examples"
+            )
 
     return violations
 

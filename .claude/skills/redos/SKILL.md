@@ -17,53 +17,27 @@ core for minutes or hours, taking down the service.
 
 ## Vulnerable patterns
 
-- `re.match(r"(a+)+$", user_input)` — nested quantifiers cause exponential backtracking
-- `Pattern.compile("(.*a){20}")` — overlapping alternation with repetition
-- `/^([\w.]+)+@/ .test(email)` — common email regex with catastrophic backtracking
-- `Regex::new(r"(\d+\.?\d*)+")` — ambiguous quantifier nesting on numeric input
+- Nested quantifiers applied to user input — a quantified group whose body is itself quantified produces exponential state
+- Overlapping alternation inside repetition — alternatives that can match the same prefix multiply backtracking work
+- Common "email" or "URL" regexes built from quantified character classes wrapped in further repetition
+- Regexes compiled from external configuration or user input where the pattern shape itself is attacker-controlled
 
 ## Fix immediately
 
-Flag the vulnerable regex and explain the risk. Show the secure pattern below as a
-suggested fix. Then continue with the original task.
+Flag the vulnerable regex, explain the risk, and suggest a fix establishing these
+properties. Translate the principle to the language and engine of the audited file —
+do not echo examples from another stack.
 
-**Secure patterns:**
-
-1. **Avoid nested quantifiers** — `(a+)+` → `a+`
-2. **Use atomic groups or possessive quantifiers** where supported — `(?>a+)` or `a++`
-3. **Set a timeout** on regex execution:
-
-```python
-# Python — use re2 or set a match timeout
-import re
-# Bad: re.match(r"(a+)+$", user_input)
-# Good: anchor and simplify
-re.match(r"a+$", user_input)
-# Or use google-re2 which guarantees linear time
-```
-
-```go
-// Go — regexp package uses RE2 engine (safe by default)
-// Go's regexp CANNOT have catastrophic backtracking
-r := regexp.MustCompile(`a+$`)
-```
-
-```java
-// Java — no built-in protection; simplify or add timeout
-Pattern p = Pattern.compile("a+$"); // simplified, no nesting
-Matcher m = p.matcher(input);
-// For complex patterns, run in a thread with a timeout
-```
-
-**Why this works:** Removing nested quantifiers eliminates the exponential state space.
-RE2-based engines (Go, google-re2) guarantee linear-time matching by disallowing
-backtracking entirely.
+1. **No nested quantifiers on user input.** Collapse a quantified group whose body is also quantified into a single quantifier. Rewrite alternations so alternatives cannot match the same prefix.
+2. **Prefer a linear-time regex engine when one is available** for the language under review. Engines that disallow backtracking guarantee linear matching regardless of pattern shape.
+3. **Bound regex execution.** When the engine supports it, set a match timeout or run the match on a cancellable worker; when it does not, simplify the pattern until worst-case input completes in bounded time.
+4. **Treat patterns sourced from configuration or user input as untrusted.** Either pre-compile a fixed allowlist of patterns, or run user-supplied patterns on a sandbox engine with a hard timeout.
 
 ## Verification
 
-- [ ] No regex applied to user input contains nested quantifiers like `(a+)+`, `(a*)*`, `(a|a)+`, or `(a+b?)+`
-- [ ] Regexes with alternation inside repetition are rewritten to avoid overlap between alternatives
-- [ ] If the language supports it (Go, Rust), a linear-time regex engine is used; otherwise patterns are simplified or execution is time-bounded
+- [ ] No regex applied to user input contains nested quantifiers or alternation inside repetition where alternatives share a prefix
+- [ ] If the language offers a linear-time engine, the audited code uses it for user-input regexes; otherwise patterns are simplified or execution is time-bounded
+- [ ] Regex patterns loaded from external configuration or user input run against an allowlist or under an enforced timeout
 
 ## References
 
