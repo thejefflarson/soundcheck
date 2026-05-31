@@ -14,7 +14,7 @@ findings or apply a checklist of "missing controls" — that's the
 developer's job once they have the context.
 
 Single source of truth: this skill delegates to the
-`threat-modeling` subagent in `agents/threat-modeling.md`. The
+`threat-modeling` subagent in `.claude/agents/threat-modeling.md`. The
 subagent's JSON output is the canonical threat-model shape.
 
 ## Vulnerable patterns

@@ -15,7 +15,7 @@ Maps security-sensitive code so reviewers know where to focus.
 Missed hotspots mean entire attack surfaces go unreviewed.
 
 Single source of truth: this skill delegates to the
-`hotspot-mapping` subagent in `agents/hotspot-mapping.md`. The
+`hotspot-mapping` subagent in `.claude/agents/hotspot-mapping.md`. The
 subagent's JSON output is the canonical hotspot shape; this skill
 adds an architecture summary and renders the result as a priority
 table.

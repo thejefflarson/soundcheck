@@ -374,7 +374,7 @@ def run_review(
     #
     # The orchestrator dispatches named subagents (threat-modeling,
     # hotspot-mapping, design-review, vulnerability-audit,
-    # attack-chain-analysis). Those live at <soundcheck>/agents/ but cwd
+    # attack-chain-analysis). Those live at <soundcheck>/.claude/agents/ but cwd
     # is the target repo, so we pass --plugin-dir pointing at the
     # soundcheck checkout to make them discoverable.
     # security-review is pure orchestration: one threat-modeling call, one

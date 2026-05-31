@@ -10,7 +10,7 @@ ones and keeps the real ones.
 This isolates Stage 2.5 from the haiku non-determinism that swamps the
 upstream pipeline. One Claude call, ~30s, deterministic structure.
 
-Re-run after any change to agents/finding-validate.md to confirm no
+Re-run after any change to .claude/agents/finding-validate.md to confirm no
 regression.
 
 Usage:
@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _claude_cli import run_claude, ClaudeCLIError  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
-AGENT_PATH = ROOT / "agents" / "finding-validate.md"
+AGENT_PATH = ROOT / ".claude" / "agents" / "finding-validate.md"
 VAULTWARDEN_DIR = Path.home() / ".cache" / "soundcheck-eval" / "repos" / "vaultwarden"
 PINNED_SHA = "d626ea8"  # captured 2026-05-27
 

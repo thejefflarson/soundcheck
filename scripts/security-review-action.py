@@ -272,7 +272,7 @@ def main() -> int:
     skill_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
 
     # The orchestrator dispatches named subagents (`threat-modeling`,
-    # `hotspot-mapping`, …) that live at <soundcheck>/agents/. When cwd
+    # `hotspot-mapping`, …) that live at <soundcheck>/.claude/agents/. When cwd
     # is a third-party repo, those aren't discoverable, so we pass
     # --plugin-dir pointing at the soundcheck checkout. Derived from
     # the skill path: .../<plugin>/.claude/skills/<name>/SKILL.md

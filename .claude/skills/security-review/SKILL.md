@@ -29,7 +29,7 @@ catalog file.
 ## Procedure
 
 Use only the **Agent** tool in main context. **No Read/Grep/Glob/
-Bash in main context.** Stage prompts live in `agents/`:
+Bash in main context.** Stage prompts live in `.claude/agents/`:
 `threat-modeling`, `hotspot-mapping`, `design-review`,
 `vulnerability-audit`, `finding-validate`, `attack-chain-analysis`.
 This skill is just the coordinator.

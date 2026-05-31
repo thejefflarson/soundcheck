@@ -13,5 +13,6 @@
     "vulnerability",
     "llm-security"
   ],
-  "skills": "./.claude/skills"
+  "skills": "./.claude/skills",
+  "agents": "./.claude/agents"
 }

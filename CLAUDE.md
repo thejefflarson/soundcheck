@@ -132,7 +132,7 @@ When adding a new auto-invoking skill, vulnerability-audit will
 pick it up automatically by reading the skill catalog in
 `.claude/skills/`. There is no separate catalog list to maintain.
 
-## Subagents (`agents/`)
+## Subagents (`.claude/agents/`)
 
 Per [Claude Code subagent best practices](https://code.claude.com/docs/en/sub-agents):
 
@@ -144,7 +144,7 @@ Per [Claude Code subagent best practices](https://code.claude.com/docs/en/sub-ag
 - `attack-chain-analysis` — chain composition (security-review only, post-review).
 
 **Reload caveat:** subagents are loaded at Claude Code session start. Editing a
-file in `agents/` requires a full session restart — `/reload-plugins`
+file in `.claude/agents/` requires a full session restart — `/reload-plugins`
 alone does not pick up agent changes. Skill edits, by contrast, are read on
 demand when the skill is invoked.
 
