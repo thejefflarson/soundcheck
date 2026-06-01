@@ -125,7 +125,16 @@ def next_action_version(action_dir: Path) -> str:
 
 
 def verify_remote_has_commit(repo: Path, commit: str) -> None:
-    """Fail loudly if `commit` is not reachable from origin."""
+    """Fail loudly if `commit` is not reachable from origin.
+
+    Note: this is a check-then-act on mutable remote state.  There is an
+    inherent race between the branch-listing RPC here and the subsequent
+    tag-move push: a concurrent force-push could in theory remove the commit
+    from origin between these two operations.  Git provides no server-side
+    atomic lock for this pattern without a custom hook.  The window is
+    narrow and the caller (plan_and_apply) also calls verify_v1_ancestor
+    immediately before tagging, so the risk is accepted and documented.
+    """
     try:
         output = run(
             ["git", "branch", "-r", "--contains", commit], cwd=repo
@@ -138,6 +147,28 @@ def verify_remote_has_commit(repo: Path, commit: str) -> None:
         raise ReleaseError(
             f"commit {commit[:8]} is not present on any origin branch — "
             f"refusing to move the v1 tag to an unpushed SHA"
+        )
+
+
+def verify_v1_ancestor(repo: Path, new_sha: str) -> None:
+    """Refuse a non-fast-forward move of the floating v1 tag.
+
+    If v1 does not exist yet this is a first-time creation and the check is
+    skipped.  Otherwise new_sha must be a descendant of the current v1 commit
+    so that all @v1 consumers stay on a linear history rather than being
+    silently redirected to a divergent or older commit.
+    """
+    try:
+        current_v1 = run(["git", "rev-list", "-n1", "refs/tags/v1"], cwd=repo)
+    except subprocess.CalledProcessError:
+        return  # v1 doesn't exist yet; first-time creation is safe
+    try:
+        run(["git", "merge-base", "--is-ancestor", current_v1, new_sha], cwd=repo)
+    except subprocess.CalledProcessError:
+        raise ReleaseError(
+            f"Current v1 ({current_v1[:8]}) is not an ancestor of new commit "
+            f"{new_sha[:8]}; refusing non-fast-forward move of v1. "
+            f"All @v1 consumers would be silently redirected to a different history."
         )
 
 
@@ -185,6 +216,14 @@ def update_action_sha(action_dir: Path, new_sha: str) -> tuple[str, str]:
     if not m:
         raise ReleaseError(f"Could not find SOUNDCHECK_SHA pin in {action_yml}")
     old_sha = m.group(1)
+    # Guard against a duplicate SHA in the file silently producing a partial
+    # or double substitution that would corrupt action.yml before commit.
+    occurrences = text.count(f'SOUNDCHECK_SHA="{old_sha}"')
+    if occurrences != 1:
+        raise ReleaseError(
+            f"Expected exactly 1 occurrence of SOUNDCHECK_SHA=\"{old_sha[:8]}...\" "
+            f"in {action_yml}; found {occurrences} — refusing to write"
+        )
     new_text = text.replace(
         f'SOUNDCHECK_SHA="{old_sha}"',
         f'SOUNDCHECK_SHA="{new_sha}"',
@@ -290,7 +329,7 @@ def plan_and_apply(args: argparse.Namespace) -> int:
     print(f"  git add action.yml")
     print(f"  git commit -m {action_commit_msg!r}")
     print(f"  git tag -a {action_tag}")
-    print(f"  git tag -f v1")
+    print(f"  git tag -s -f v1  (signed; requires GPG key)")
     print(f"  git push origin main {action_tag}")
     print(f"  git push origin v1 --force")
 
@@ -302,7 +341,12 @@ def plan_and_apply(args: argparse.Namespace) -> int:
             ["git", "tag", "-a", action_tag, "-m", action_tag, action_sha],
             cwd=action_dir,
         )
-        run(["git", "tag", "-f", "v1", action_sha], cwd=action_dir)
+        # Ancestor check: refuse to redirect @v1 consumers to a divergent or
+        # older commit (integrity-failures A08:2025).
+        verify_v1_ancestor(action_dir, action_sha)
+        # Signed tag provides a consumer-visible integrity signal; requires
+        # a GPG key configured in git (gpg.signingKey / user.signingKey).
+        run(["git", "tag", "-s", "-f", "v1", action_sha, "-m", "v1"], cwd=action_dir)
         run(["git", "push", "origin", "main"], cwd=action_dir, capture=False)
         run(["git", "push", "origin", action_tag], cwd=action_dir, capture=False)
         run(["git", "push", "origin", "v1", "--force"],
