@@ -12,12 +12,18 @@
 #     docker build -f Dockerfile.plugin-test .
 # CI:
 #     used by .github/workflows/static-checks.yml
-FROM node:20-slim
+FROM node:20.18.1-slim
 # Postinstall must run so the platform-native binary is downloaded.
 # This is a test-only image; we trust the package author.
+# Supply-chain note: npm verifies the package tarball's sha512 via the
+# registry; the postinstall step downloads a platform-native binary whose
+# hash is not separately pinned (inherent to claude-code's packaging).
 RUN npm install -g @anthropic-ai/claude-code@2.1.159
 WORKDIR /plugin
-COPY .claude-plugin /plugin/.claude-plugin
-COPY .claude /plugin/.claude
+# Drop to non-root before copying files and running validation (A02:2025).
+RUN chown node:node /plugin
+USER node
+COPY --chown=node:node .claude-plugin /plugin/.claude-plugin
+COPY --chown=node:node .claude /plugin/.claude
 RUN claude plugin validate /plugin/.claude-plugin/plugin.json \
  && claude plugin validate /plugin/.claude-plugin/marketplace.json
