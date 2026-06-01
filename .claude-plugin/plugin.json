@@ -14,7 +14,15 @@
     "llm-security"
   ],
   "skills": "./.claude/skills",
-  "agents": "./.claude/agents",
+  "agents": [
+    "./.claude/agents/attack-chain-analysis.md",
+    "./.claude/agents/contract-audit.md",
+    "./.claude/agents/design-review.md",
+    "./.claude/agents/finding-validate.md",
+    "./.claude/agents/hotspot-mapping.md",
+    "./.claude/agents/threat-modeling.md",
+    "./.claude/agents/vulnerability-audit.md"
+  ],
   "hooks": "./.claude/hooks/hooks.json",
   "userConfig": {
     "autoReview": {
