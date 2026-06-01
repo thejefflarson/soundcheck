@@ -1,0 +1,23 @@
+# Hermetic plugin manifest test.
+#
+# Builds a minimal node image, installs the same claude CLI version used
+# by soundcheck-action, then runs `claude plugin validate` against both
+# manifest files. Catches schema regressions like the v1.12.0 "agents:
+# Invalid input" bug, where the `agents` field was set to a directory
+# path instead of an array of files — `claude plugin validate` rejects
+# this but only when pointed at plugin.json directly (the directory form
+# picks marketplace.json instead).
+#
+# Local:
+#     docker build -f Dockerfile.plugin-test .
+# CI:
+#     used by .github/workflows/static-checks.yml
+FROM node:20-slim
+# Postinstall must run so the platform-native binary is downloaded.
+# This is a test-only image; we trust the package author.
+RUN npm install -g @anthropic-ai/claude-code@2.1.159
+WORKDIR /plugin
+COPY .claude-plugin /plugin/.claude-plugin
+COPY .claude /plugin/.claude
+RUN claude plugin validate /plugin/.claude-plugin/plugin.json \
+ && claude plugin validate /plugin/.claude-plugin/marketplace.json

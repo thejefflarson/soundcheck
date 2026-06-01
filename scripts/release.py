@@ -57,6 +57,32 @@ def require_clean_tree(repo: Path) -> None:
         )
 
 
+def require_valid_plugin_manifest() -> None:
+    """Reject the release if `claude plugin validate` errors on plugin.json.
+
+    Catches schema regressions like the v1.12.0 `agents: Invalid input` bug
+    (directory path where a file path was required). Run against the file
+    directly because the directory form picks marketplace.json over
+    plugin.json. Warnings (e.g. the CLAUDE.md hint) are tolerated; only
+    errors block.
+    """
+    import shutil
+    if not shutil.which("claude"):
+        raise ReleaseError(
+            "claude CLI not on PATH; install @anthropic-ai/claude-code or "
+            "skip preflight by running with --no-validate (not implemented)."
+        )
+    r = subprocess.run(
+        ["claude", "plugin", "validate", str(PLUGIN_JSON)],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        raise ReleaseError(
+            f"`claude plugin validate {PLUGIN_JSON}` failed:\n"
+            f"{r.stdout}{r.stderr}"
+        )
+
+
 def require_on_main(repo: Path) -> None:
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo)
     if branch != "main":
@@ -181,6 +207,7 @@ def plan_and_apply(args: argparse.Namespace) -> int:
     require_clean_tree(SOUNDCHECK_DIR)
     require_on_main(action_dir)
     require_clean_tree(action_dir)
+    require_valid_plugin_manifest()
 
     skill_count = count_skills()
     action_tag = next_action_version(action_dir)
