@@ -3,9 +3,9 @@
 Automated security checks for Claude Code. 52 skills covering injection,
 authentication, cryptography, access control, LLM-specific threats, and
 more — drawn from OWASP, CWE, and real-world vulnerability patterns.
-When Claude writes vulnerable code, the matching skill auto-invokes,
-flags the issue, explains the fix, and lets Claude continue with your
-original task.
+When Claude writes vulnerable code, the matching skill fires, flags
+the issue, rewrites the offending block, and hands the turn back to
+Claude.
 
 ---
 
@@ -45,16 +45,16 @@ concurrency, numeric trust-boundary). Complete reference at the bottom.
 
 ### Async auto-review after each turn
 
-Every time Claude finishes a turn, Soundcheck quietly reviews what was
-written. If something looks risky, Claude sees a findings table on the
-next turn and either fixes it or pushes back — no manual
-`/security-review`, no waiting on a PR comment cycle. You catch security
-issues while the context is still fresh, not the next day.
+Soundcheck reviews every diff the moment Claude finishes writing it.
+When something looks risky, Claude reads the findings on the next turn
+and either fixes the code or pushes back — no manual `/security-review`,
+no PR comment cycle. You catch issues while the context is still fresh,
+not the next day.
 
-A one-shot haiku triage decides whether the diff is worth a full
-review, so most turns cost ~$0.001. Only diffs that plausibly
-introduce a vulnerability trigger the full `pr-review` — a few cents
-when it fires.
+A one-shot haiku triage decides whether the diff warrants a full
+review, so most turns cost ~$0.001. Only diffs that plausibly introduce
+a vulnerability trigger the full `pr-review` — a few cents when it
+fires.
 
 Enabled by default. Disable with `/plugin config soundcheck
 autoReview=false`. See [docs/auto-review.md](docs/auto-review.md) for
@@ -110,11 +110,11 @@ jobs:
 ```
 
 The action posts a severity-ranked findings table to the PR. Auto-fix
-(committing LLM-generated changes back to the branch) is **off by
-default**; opt in with `apply-rewrites: 'true'`. Before enabling
-auto-fix in CI, require human review of the resulting commits via
-branch-protection rules — the action provides no approval gate. To
-preview what would change without committing, run the script locally:
+(committing LLM-generated changes back to the branch) stays off by
+default; opt in with `apply-rewrites: 'true'`. Before turning it on in
+CI, gate the resulting commits behind branch-protection rules and human
+review — the action ships no approval gate of its own. To preview the
+changes without committing, run the script locally:
 
 ```bash
 python scripts/security-review-action.py --repo-dir . --diff-base main
@@ -155,8 +155,8 @@ Or headless from a checkout:
 python scripts/contract-review.py --repo-dir . --model opus
 ```
 
-Both produce the same findings table. Findings are **hypothesis-grade**
-— read the code and write a PoC before filing. See
+Both produce the same findings table. Treat each finding as
+**hypothesis-grade** — read the code and write a PoC before filing. See
 [`docs/contract-review.md`](docs/contract-review.md) for hit-rate
 numbers, the comparison against `security-review`, and known limitations.
 
@@ -172,9 +172,9 @@ We test against 130 deliberately broken fixtures — Flask login routes
 with hardcoded passwords, SQL queries built from string concatenation,
 file uploads without size limits. Each fixture carries a checklist of
 what a thorough review should catch and fix. Claude reviews each fixture
-twice (once with Soundcheck loaded, once with a generic "be a security
-reviewer" prompt); a judge call scores both against the checklist. *Full
-pass* means every checklist item is satisfied.
+twice — once with Soundcheck loaded, once with a generic "be a security
+reviewer" prompt — and a judge model scores both against the checklist.
+*Full pass* means Claude satisfies every checklist item.
 
 | Model | With Soundcheck | Plain Claude | Lift |
 |---|---|---|---|
@@ -202,10 +202,10 @@ Two independent checks:
   confirms Soundcheck doesn't break anything on code it wasn't designed
   against.
 - **Real OWASP projects** — 13 vulnerable files pinned from OWASP Juice
-  Shop (TypeScript) and OWASP PyGoat (Python). Soundcheck caught and
-  fully fixed **12 of 13 (92%)**, 100% detection across all 13. The
-  one miss — open-redirect in Juice Shop's `redirect.ts` — was detected
-  but only partially fixed.
+  Shop (TypeScript) and OWASP PyGoat (Python). Soundcheck caught all 13
+  and fully fixed **12 of 13 (92%)**. The one miss — open-redirect in
+  Juice Shop's `redirect.ts` — Soundcheck flagged but only partially
+  patched.
 
 ### Review times (full-repo pipeline)
 
@@ -218,18 +218,18 @@ commits:
 | [cal.com](https://github.com/calcom/cal.com) | TypeScript | **8.7 min** | 25.7 min |
 | [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **5.7 min** | 14.7 min |
 
-For very large monorepos (we tested haiku against gitea at 2 minutes
-diff-scoped), the PR-scoped `--diff-base` flow is the practical option.
+For very large monorepos (we ran haiku against gitea in 2 minutes
+diff-scoped), use the PR-scoped `--diff-base` flow.
 
 In practice:
 
-- **Haiku is fast enough for PR gates** — typical diff-scoped reviews
-  finish in 1-2 minutes.
-- **Sonnet is for nightly or monthly deep scans** — higher-quality
+- **Haiku handles PR gates** — typical diff-scoped reviews finish in
+  1-2 minutes.
+- **Sonnet handles nightly or monthly deep scans** — higher-quality
   findings, but 3-4× the per-call time.
 - **Soundcheck adds no latency over bare Claude.** On the SecurityEval
-  paired run, plugin-loaded reviews were *faster* than bare (15.2s
-  median vs 17.7s) — the focused skill prompt finishes sooner.
+  paired run, plugin-loaded reviews ran *faster* than bare (15.2s median
+  vs 17.7s) — the focused skill prompt converges sooner.
 
 ### Where it's weakest
 
@@ -237,16 +237,15 @@ Two honest caveats:
 
 1. **Memory safety (kernels, codecs, crypto-lib internals).** Soundcheck's
    `memory-api-misuse` and `crypto-library-misuse` skills catch local
-   patterns (unchecked `malloc`, AEAD nonce reuse). Whole-program lifetime
-   analysis is not Soundcheck's strength — ASAN/UBSAN/Valgrind, fuzzers
+   patterns — unchecked `malloc`, AEAD nonce reuse — but Soundcheck does
+   not trace whole-program lifetimes. ASAN/UBSAN/Valgrind, fuzzers
    (libFuzzer, OSS-Fuzz), and static analyzers (`clang-tidy`, CodeQL) own
-   that territory. Run those alongside Soundcheck on C/C++ codebases.
-2. **`contract-review` is hypothesis-grade.** It surfaces *candidates* to
-   read carefully, not confirmed CVEs. In our testing, building real PoCs
-   for the findings produced a meaningful false-positive rate — some
-   findings described real code patterns whose exploit chain broke at a
-   downstream check the audit had not traced. Treat each finding as
-   "investigate before filing." Numbers in
+   that territory. Run them alongside Soundcheck on C/C++ codebases.
+2. **`contract-review` produces hypotheses, not CVEs.** When we built
+   PoCs for the findings, a meaningful share turned out to be false
+   positives — the findings described real code patterns, but the
+   exploit chain broke at a downstream check the audit never traced.
+   Investigate each finding before filing. Numbers in
    [`docs/contract-review.md`](docs/contract-review.md).
 
 Reproduce any of this with:
@@ -261,8 +260,8 @@ Reproduce any of this with:
 
 ### Cost control
 
-`security-review` and `contract-review` can be expensive. Set a hard budget
-cap with `--max-budget-usd` to prevent runaway costs in CI:
+`security-review` and `contract-review` burn API tokens. Cap the spend
+with `--max-budget-usd` to prevent runaway costs in CI:
 
 ```bash
 # Cap full-repo scan at $5
@@ -274,9 +273,10 @@ python scripts/contract-review.py --repo-dir . --model opus \
   --max-budget-usd 15
 ```
 
-If the budget is exceeded, the script exits non-zero and prints a partial
-findings table. Default budget is **$20** for `security-review` and **$30**
-for `contract-review`; always set an explicit cap in CI to avoid surprises.
+When a run hits the cap, the script exits non-zero and prints a partial
+findings table. The default cap sits at **$20** for `security-review`
+and **$30** for `contract-review` — always pin an explicit budget in CI
+to rule out surprises.
 
 ### Optional: reinforce triggers in your `CLAUDE.md`
 
@@ -420,11 +420,10 @@ nominate an emerging threat:
 3. Paste a short code snippet showing the vulnerable pattern — if you
    can't show code, the threat may not be detectable yet
 
-Nominations are auto-labeled `threat-candidate` and reviewed quarterly.
-The backlog lives in
-[`docs/threat-radar.md`](docs/threat-radar.md), which tracks 14+
-threats across `watching`, `candidate`, `in-progress`, and `shipped`
-tiers.
+We auto-label nominations `threat-candidate` and review them quarterly.
+The backlog lives in [`docs/threat-radar.md`](docs/threat-radar.md),
+which tracks 14+ threats across `watching`, `candidate`, `in-progress`,
+and `shipped` tiers.
 
 ---
 
