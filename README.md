@@ -3,8 +3,9 @@
 Automated security checks for Claude Code. 52 skills covering injection,
 authentication, cryptography, access control, LLM-specific threats, and
 more — drawn from OWASP, CWE, and real-world vulnerability patterns.
-Skills auto-invoke when Claude writes vulnerable code, flag the issue,
-explain the fix, and continue with your original task.
+When Claude writes vulnerable code, the matching skill auto-invokes,
+flags the issue, explains the fix, and lets Claude continue with your
+original task.
 
 ---
 
@@ -28,29 +29,27 @@ claude --plugin-dir /path/to/soundcheck
 
 ### Day to day: skills auto-invoke while Claude writes code
 
-When Claude writes code that matches a skill's
-trigger description, the skill should invoke automatically, it will flag the
-vulnerabilities, and rewrite the code with a safe alternative. You'll
-see the skill name in the tool-use stream — for example:
+When Claude writes code matching a skill's trigger description, the skill
+fires automatically — it flags the issue and rewrites the offending block
+with a safe alternative. You'll see the skill name in the tool-use stream:
 
 > *Invoking soundcheck:injection*
 > *Found: SQL query built from string concatenation at line 42. Rewrote
 > using `cursor.execute(query, params)` with `%s` placeholders so user
 > input is bound by the driver.*
 
-The 52 skills cover roughly four families: web/API (OWASP Web Top 10),
-LLM/AI (OWASP LLM Top 10), API-specific (OWASP API Top 10), and
-systems-software (memory-API misuse, crypto-library wiring, privilege
-handling, concurrency, numeric trust-boundary). There's a complete reference at the
-bottom of this README.
+The 52 skills cover four families: web/API (OWASP Web Top 10), LLM/AI
+(OWASP LLM Top 10), API-specific (OWASP API Top 10), and systems-software
+(memory-API misuse, crypto-library wiring, privilege handling,
+concurrency, numeric trust-boundary). Complete reference at the bottom.
 
 ### Async auto-review after each turn
 
-Every time Claude finishes a turn, soundcheck quietly reviews what was
+Every time Claude finishes a turn, Soundcheck quietly reviews what was
 written. If something looks risky, Claude sees a findings table on the
-next turn and can fix it or push back — no manual `/security-review`
-step, no waiting for a PR comment cycle. You catch security issues
-while the context is still fresh, not the next day.
+next turn and either fixes it or pushes back — no manual
+`/security-review`, no waiting on a PR comment cycle. You catch security
+issues while the context is still fresh, not the next day.
 
 A one-shot haiku triage decides whether the diff is worth a full
 review, so most turns cost ~$0.001. Only diffs that plausibly
@@ -63,8 +62,8 @@ the staged flow, full cost table, and limitations.
 
 ### On demand: three review modes for existing code
 
-When you want to scan code that's already written — a PR diff, a whole
-repo before a release, or a deep audit before shipping — use one of the following skills:
+When you want to scan existing code — a PR diff, a whole repo before a
+release, or a deep audit before shipping — reach for one of these:
 
 | Mode | When | Time | Cost | Catches |
 |---|---|---|---|---|
@@ -72,9 +71,9 @@ repo before a release, or a deep audit before shipping — use one of the follow
 | **`/security-review`** | Nightly CI or monthly audit | ~20 min | ~$4 | All severities, whole repo, attack chains |
 | **`/contract-review`** | Pre-release or after big refactor | ~30 min | ~$10–20 | Bugs where a function does less than callers assume |
 
-Rough rule of thumb: gate every PR on `pr-review`, schedule
-`security-review` nightly or weekly, and add `contract-review` on a
-slower cadence once obvious bugs are fixed.
+Rule of thumb: gate every PR on `pr-review`, schedule `security-review`
+nightly or weekly, and add `contract-review` on a slower cadence once
+the obvious bugs are out of the way.
 
 #### `pr-review` — the CI gate
 
@@ -110,13 +109,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The action comments a severity-ranked findings table on the PR. Auto-fix
-(committing LLM-generated changes back to the branch) is **opt-in**: set
-`apply-rewrites: 'true'` in the action inputs to enable it; it is **off
-by default**. Before enabling auto-fix in CI, require human review of the
-resulting commits via branch-protection rules — the action provides no
-additional approval gate of its own. To preview what would change without
-committing, run the script locally:
+The action posts a severity-ranked findings table to the PR. Auto-fix
+(committing LLM-generated changes back to the branch) is **off by
+default**; opt in with `apply-rewrites: 'true'`. Before enabling
+auto-fix in CI, require human review of the resulting commits via
+branch-protection rules — the action provides no approval gate. To
+preview what would change without committing, run the script locally:
 
 ```bash
 python scripts/security-review-action.py --repo-dir . --diff-base main
@@ -140,10 +138,10 @@ python scripts/security-review-action.py --repo-dir . --full-repo --model sonnet
 
 #### `contract-review` — deep audit for subtler bugs
 
-For caller/callee invariant gaps — the bug class where two functions
-each look fine in isolation but have a gap together (an auth helper
-named like an identity check but only matching by name, a "verified"
-predicate that fails open on null input).
+For caller/callee invariant gaps — bugs where two functions each look
+fine alone but break together (an auth helper named like an identity
+check but matching only by name; a "verified" predicate that fails open
+on null input).
 
 In a Claude Code session:
 
@@ -166,25 +164,25 @@ numbers, the comparison against `security-review`, and known limitations.
 
 ## Does it actually work?
 
-Short answer: yes, with calibrations per mode. Here's the evidence.
+Short answer: yes — with caveats per mode.
 
 ### Head-to-head against bare Claude (auto-invoking skills)
 
-We test against 130 deliberately broken fixtures — Flask login routes with hardcoded
-passwords, SQL queries built from string concatenation, file uploads
-without size limits. Each fixture has a checklist of what a thorough review
-should catch and fix. Claude reviews each fixture twice (with Soundcheck
-loaded, with a generic "be a security reviewer" prompt); a judge call
-scores both against the checklist. *Full pass* means every checklist
-item satisfied.
+We test against 130 deliberately broken fixtures — Flask login routes
+with hardcoded passwords, SQL queries built from string concatenation,
+file uploads without size limits. Each fixture carries a checklist of
+what a thorough review should catch and fix. Claude reviews each fixture
+twice (once with Soundcheck loaded, once with a generic "be a security
+reviewer" prompt); a judge call scores both against the checklist. *Full
+pass* means every checklist item is satisfied.
 
 | Model | With Soundcheck | Plain Claude | Lift |
 |---|---|---|---|
 | Haiku | **77%** full pass | 40% | +37 pts |
 | Sonnet | **90%** full pass | 58% | +32 pts |
 
-When the two reviews disagree, Soundcheck wins 6 of 7 times. Lift is
-similar across model tiers — loading the plugin raises the floor
+When the two reviews disagree, Soundcheck wins 6 of 7 times. The lift is
+similar across model tiers — loading the plugin raises baseline quality
 everywhere we tested.
 
 Statistical detail: Wilcoxon signed-rank on per-fixture score
@@ -220,37 +218,35 @@ commits:
 | [cal.com](https://github.com/calcom/cal.com) | TypeScript | **8.7 min** | 25.7 min |
 | [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **5.7 min** | 14.7 min |
 
-Haiku finished gitea in 2 minutes. For very large monorepos, the
-PR-scoped `--diff-base` flow is the practical option.
+For very large monorepos (we tested haiku against gitea at 2 minutes
+diff-scoped), the PR-scoped `--diff-base` flow is the practical option.
 
-Practical guidance:
+In practice:
 
 - **Haiku is fast enough for PR gates** — typical diff-scoped reviews
   finish in 1-2 minutes.
-- **Sonnet is for nightly/monthly deep scans** — higher-quality
-  findings but 3-4× the per-call time.
-- **Soundcheck doesn't add latency on top of bare Claude.** On the
-  SecurityEval paired run, plugin-loaded reviews were *faster* than
-  bare (15.2s median vs 17.7s) — the skill's focused prompt finishes
-  sooner.
+- **Sonnet is for nightly or monthly deep scans** — higher-quality
+  findings, but 3-4× the per-call time.
+- **Soundcheck adds no latency over bare Claude.** On the SecurityEval
+  paired run, plugin-loaded reviews were *faster* than bare (15.2s
+  median vs 17.7s) — the focused skill prompt finishes sooner.
 
 ### Where it's weakest
 
 Two honest caveats:
 
 1. **Memory safety (kernels, codecs, crypto-lib internals).** Soundcheck's
-   new `memory-api-misuse` and `crypto-library-misuse` skills catch
-   local patterns (unchecked `malloc`, AEAD nonce reuse). Whole-program
-   lifetime analysis isn't soundcheck's strength — ASAN/UBSAN/Valgrind,
-   fuzzers (libFuzzer, OSS-Fuzz), and static analyzers (`clang-tidy`,
-   CodeQL) own that territory. Run those alongside soundcheck on C/C++
-   codebases.
-2. **`contract-review` is hypothesis-grade.** It surfaces *candidates*
-   to read carefully, not confirmed CVEs. In our testing, building real
-   PoCs for findings produced a meaningful false-positive rate — some
-   findings described real code patterns but the exploit chain broke at
-   a downstream check the audit hadn't traced. Treat each finding as
-   "investigate before filing." Full numbers in
+   `memory-api-misuse` and `crypto-library-misuse` skills catch local
+   patterns (unchecked `malloc`, AEAD nonce reuse). Whole-program lifetime
+   analysis is not Soundcheck's strength — ASAN/UBSAN/Valgrind, fuzzers
+   (libFuzzer, OSS-Fuzz), and static analyzers (`clang-tidy`, CodeQL) own
+   that territory. Run those alongside Soundcheck on C/C++ codebases.
+2. **`contract-review` is hypothesis-grade.** It surfaces *candidates* to
+   read carefully, not confirmed CVEs. In our testing, building real PoCs
+   for the findings produced a meaningful false-positive rate — some
+   findings described real code patterns whose exploit chain broke at a
+   downstream check the audit had not traced. Treat each finding as
+   "investigate before filing." Numbers in
    [`docs/contract-review.md`](docs/contract-review.md).
 
 Reproduce any of this with:
@@ -284,8 +280,8 @@ for `contract-review`; always set an explicit cap in CI to avoid surprises.
 
 ### Optional: reinforce triggers in your `CLAUDE.md`
 
-If you want triggers to apply across all projects (not just ones with
-the plugin loaded), add this to `~/.claude/CLAUDE.md`:
+To apply triggers across every project (not just ones with the plugin
+loaded), add this to `~/.claude/CLAUDE.md`:
 
 ```markdown
 ## Security
@@ -319,8 +315,8 @@ export CLOUD_ML_REGION=us-east5
 export ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project
 ```
 
-Without those env vars, `claude -p --model <ARN>` will hang or silently
-fail and Soundcheck will surface a timeout. The script runs a short
+Without those env vars, `claude -p --model <ARN>` hangs or fails
+silently and Soundcheck surfaces a timeout. The script runs a short
 preflight call before the real review to catch this fast.
 
 ---
@@ -329,7 +325,7 @@ preflight call before the real review to catch this fast.
 
 The 52 skills auto-invoke based on patterns in their `description`
 frontmatter. You do *not* have to ask Claude to run them — they fire
-whenever the code Claude is about to write matches.
+whenever the code Claude is about to write matches a trigger.
 
 | Code pattern | Skill invoked | OWASP |
 |---|---|---|
