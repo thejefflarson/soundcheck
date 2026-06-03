@@ -27,7 +27,7 @@ claude --plugin-dir /path/to/soundcheck
 
 ## How you'll use it
 
-### Async auto-review after each turn
+### Automatic reviews after each edit
 
 Soundcheck reviews every diff the moment Claude finishes writing it.
 When something looks risky, Claude reads the findings on the next turn
