@@ -27,22 +27,6 @@ claude --plugin-dir /path/to/soundcheck
 
 ## How you'll use it
 
-### Day to day: skills auto-invoke while Claude writes code
-
-When Claude writes code matching a skill's trigger description, the skill
-fires automatically — it flags the issue and rewrites the offending block
-with a safe alternative. You'll see the skill name in the tool-use stream:
-
-> *Invoking soundcheck:injection*
-> *Found: SQL query built from string concatenation at line 42. Rewrote
-> using `cursor.execute(query, params)` with `%s` placeholders so user
-> input is bound by the driver.*
-
-The 52 skills cover four families: web/API (OWASP Web Top 10), LLM/AI
-(OWASP LLM Top 10), API-specific (OWASP API Top 10), and systems-software
-(memory-API misuse, crypto-library wiring, privilege handling,
-concurrency, numeric trust-boundary). Complete reference at the bottom.
-
 ### Async auto-review after each turn
 
 Soundcheck reviews every diff the moment Claude finishes writing it.
