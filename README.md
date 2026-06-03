@@ -46,15 +46,15 @@ bottom of this README.
 
 ### Async auto-review after each turn
 
-Every time Claude finishes a turn, soundcheck quietly reviews what got
+Every time Claude finishes a turn, soundcheck quietly reviews what was
 written. If something looks risky, Claude sees a findings table on the
 next turn and can fix it or push back — no manual `/security-review`
 step, no waiting for a PR comment cycle. You catch security issues
 while the context is still fresh, not the next day.
 
-A one-shot haiku triage decides whether the diff is even worth a full
-review, so most turns terminate for ~$0.001. Only diffs that plausibly
-introduce a vulnerability pay the full `pr-review` cost — a few cents
+A one-shot haiku triage decides whether the diff is worth a full
+review, so most turns cost ~$0.001. Only diffs that plausibly
+introduce a vulnerability trigger the full `pr-review` — a few cents
 when it fires.
 
 Enabled by default. Disable with `/plugin config soundcheck
