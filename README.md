@@ -46,20 +46,20 @@ bottom of this README.
 
 ### Async auto-review after each turn
 
-After Claude finishes a turn, a background hook runs the `pr-review`
-skill against the working-copy diff. Findings surface in the next turn
-as a system reminder; Claude can fix them or push back. The hook runs
-detached, so the user isn't blocked.
+Every time Claude finishes a turn, soundcheck quietly reviews what got
+written. If something looks risky, Claude sees a findings table on the
+next turn and can fix it or push back — no manual `/security-review`
+step, no waiting for a PR comment cycle. You catch security issues
+while the context is still fresh, not the next day.
 
-A local file-extension gate plus a one-shot haiku triage call
-(~2-3s, ~$0.001) skip most turns silently. Only diffs that plausibly
-introduce a security vulnerability pay the full review cost.
+A one-shot haiku triage decides whether the diff is even worth a full
+review, so most turns terminate for ~$0.001. Only diffs that plausibly
+introduce a vulnerability pay the full `pr-review` cost — a few cents
+when it fires.
 
-Enabled by default. To disable: `/plugin config soundcheck
-autoReview=false`, or export `SOUNDCHECK_AUTO_REVIEW=false` before
-launching Claude Code. See [docs/auto-review.md](docs/auto-review.md)
-for the full design — stage diagram, cost discipline, limitations, and
-the test procedure.
+Enabled by default. Disable with `/plugin config soundcheck
+autoReview=false`. See [docs/auto-review.md](docs/auto-review.md) for
+the staged flow, full cost table, and limitations.
 
 ### On demand: three review modes for existing code
 
