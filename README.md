@@ -44,6 +44,23 @@ systems-software (memory-API misuse, crypto-library wiring, privilege
 handling, concurrency, numeric trust-boundary). There's a complete reference at the
 bottom of this README.
 
+### Async auto-review after each turn
+
+After Claude finishes a turn, a background hook runs the `pr-review`
+skill against the working-copy diff. Findings surface in the next turn
+as a system reminder; Claude can fix them or push back. The hook runs
+detached, so the user isn't blocked.
+
+A local file-extension gate plus a one-shot haiku triage call
+(~2-3s, ~$0.001) skip most turns silently. Only diffs that plausibly
+introduce a security vulnerability pay the full review cost.
+
+Enabled by default. To disable: `/plugin config soundcheck
+autoReview=false`, or export `SOUNDCHECK_AUTO_REVIEW=false` before
+launching Claude Code. See [docs/auto-review.md](docs/auto-review.md)
+for the full design — stage diagram, cost discipline, limitations, and
+the test procedure.
+
 ### On demand: three review modes for existing code
 
 When you want to scan code that's already written — a PR diff, a whole
