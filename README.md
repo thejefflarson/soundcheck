@@ -40,9 +40,10 @@ review, so most turns cost ~$0.001. Only diffs that plausibly introduce
 a vulnerability trigger the full `pr-review` — a few cents when it
 fires.
 
-Enabled by default. Disable with `/plugin config soundcheck
-autoReview=false`. See [docs/auto-review.md](docs/auto-review.md) for
-the staged flow, full cost table, and limitations.
+Enabled by default. To disable, export `SOUNDCHECK_AUTO_REVIEW=false`
+in your shell before launching Claude Code. See
+[docs/auto-review.md](docs/auto-review.md) for the staged flow, full
+cost table, and limitations.
 
 ### On demand: three review modes for existing code
 

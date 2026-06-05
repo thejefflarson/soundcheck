@@ -16,11 +16,14 @@ findings to Claude:
      security-review-action.py against the diff, surface findings to
      stderr, exit 2 (asyncRewake → wakes Claude).
 
-Default-on. Disable via either:
-  - Plugin user config: /plugin config soundcheck autoReview=false
-    (Claude Code exports this as CLAUDE_PLUGIN_OPTION_autoReview)
-  - Manual env var: SOUNDCHECK_AUTO_REVIEW=false (for runs outside
-    Claude Code, e.g. test-auto-review.py)
+Default-on. To disable, export SOUNDCHECK_AUTO_REVIEW=false in the shell
+before launching Claude Code.
+
+Earlier versions exposed an `autoReview` userConfig option, but
+`CLAUDE_PLUGIN_OPTION_*` env vars are not actually exported to Stop hook
+subprocesses for default-valued options (empirically verified by
+scripts/test-hook-env.py). Removing the userConfig field keeps the
+toggle behavior honest.
 """
 from __future__ import annotations
 
@@ -34,12 +37,7 @@ def _opted_out(v: str | None) -> bool:
     return (v or "").strip().lower() in ("0", "false", "no", "off")
 
 
-# Claude Code exports each userConfig option as CLAUDE_PLUGIN_OPTION_<KEY>.
-# SOUNDCHECK_AUTO_REVIEW is the legacy / manual override for users running
-# the script outside Claude Code. Either one opts out; default is on.
-if _opted_out(os.environ.get("CLAUDE_PLUGIN_OPTION_autoReview")) or _opted_out(
-    os.environ.get("SOUNDCHECK_AUTO_REVIEW")
-):
+if _opted_out(os.environ.get("SOUNDCHECK_AUTO_REVIEW")):
     sys.exit(0)
 
 PROJECT_DIR = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()).resolve()

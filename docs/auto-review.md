@@ -36,14 +36,18 @@ something plausibly worth reviewing.
 
 ## Enabling and disabling
 
-Auto-review is **default-on**. To toggle:
+Auto-review is **default-on**. To disable, export
+`SOUNDCHECK_AUTO_REVIEW=false` in your shell before launching Claude
+Code. The hook reads the env var directly and exits silently when it
+matches a truthy-false value (`false`, `0`, `no`, `off`).
 
-- In Claude Code: `/plugin config soundcheck autoReview=false`
-- Per session: export `SOUNDCHECK_AUTO_REVIEW=false` before launching
-  Claude Code. The hook honors the env var directly.
-
-The toggle is exposed via the plugin manifest's `userConfig` block, so
-the value persists across sessions once set.
+Earlier versions exposed a `/plugin config soundcheck autoReview=false`
+knob via the plugin manifest's `userConfig` block. We removed that path
+in v1.12.4 — Claude Code does not export `CLAUDE_PLUGIN_OPTION_*` env
+vars to Stop hook subprocesses for default-valued options, so the
+toggle didn't work as promised. (Verified empirically with
+`scripts/test-hook-env.py`.) The env-var path is deterministic and
+honest.
 
 ## Cost discipline
 
@@ -82,7 +86,7 @@ Two paths:
 
 - Working tree is clean (`git diff HEAD` returns nothing)
 - No changed file matches the code-file extension allowlist
-- `SOUNDCHECK_AUTO_REVIEW=false` or `autoReview=false` in plugin config
+- `SOUNDCHECK_AUTO_REVIEW=false` in the shell environment
 - The triage answers NO (the most common case once stages 1 and 2 pass)
 - `claude` CLI is missing from `PATH` (the hook fails closed)
 - `git` isn't initialized in the project directory
