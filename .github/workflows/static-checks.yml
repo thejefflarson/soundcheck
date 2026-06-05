@@ -23,6 +23,9 @@ jobs:
       - name: Run skill validator
         run: python scripts/validate-skills.py
 
+      - name: Run hook validator
+        run: python scripts/validate-hooks.py
+
   validate-plugin-manifest:
     name: Validate plugin manifest (claude plugin validate)
     runs-on: ubuntu-latest

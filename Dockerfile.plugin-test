@@ -25,5 +25,13 @@ RUN chown node:node /plugin
 USER node
 COPY --chown=node:node .claude-plugin /plugin/.claude-plugin
 COPY --chown=node:node .claude /plugin/.claude
+COPY --chown=node:node scripts/validate-hooks.py /plugin/scripts/validate-hooks.py
+# Stage 1: manifest schema (`agents` field shape, etc.)
 RUN claude plugin validate /plugin/.claude-plugin/plugin.json \
  && claude plugin validate /plugin/.claude-plugin/marketplace.json
+# Stage 2: hook-substitution gate. Catches user_config refs that lack
+# defaults — the v1.12.0/1/2 "autoReview isn't set" class of bug.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+USER node
+RUN python3 /plugin/scripts/validate-hooks.py
