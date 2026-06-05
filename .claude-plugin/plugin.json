@@ -28,7 +28,8 @@
     "autoReview": {
       "type": "boolean",
       "title": "Auto-review on Stop",
-      "description": "After Claude finishes a turn, run the pr-review skill against the working-copy diff in the background. A local file-extension gate plus a one-shot haiku triage call skip most turns; only diffs likely to introduce vulnerabilities pay the full review cost. Enabled by default; set to false to disable."
+      "description": "After Claude finishes a turn, run the pr-review skill against the working-copy diff in the background. A local file-extension gate plus a one-shot haiku triage call skip most turns; only diffs likely to introduce vulnerabilities pay the full review cost. Enabled by default; set to false to disable.",
+      "default": true
     }
   }
 }
