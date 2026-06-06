@@ -278,7 +278,14 @@ def _main_locked(triage_only: bool) -> int:
     # doesn't burn another pr-review cycle.
     _record_review(state, content_hash)
 
-    if "<soundcheck-findings>[]" in out or "<soundcheck-findings>" not in out:
+    # security-review-action.py's documented exit-code contract:
+    #   0 = clean (no Critical/High findings)
+    #   1 = Critical/High findings present
+    #   2 = infrastructure error
+    # Trust the exit code rather than scraping the stdout for a
+    # `<soundcheck-findings>` tag — current pr-review output is a
+    # human-readable Markdown table without that machine-readable block.
+    if proc.returncode != 1:
         return 0
 
     print(
