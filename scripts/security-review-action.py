@@ -217,6 +217,11 @@ def main() -> int:
                              "findings counts, autofix targets).")
     parser.add_argument("--diff-base", metavar="REF",
                         help="Git ref to diff against. Changed files only.")
+    parser.add_argument("--files", metavar="PATH", nargs="+", default=None,
+                        help="Explicit list of files to review (relative to "
+                             "--repo-dir). Bypasses git diff so callers can "
+                             "review untracked files or pre-staged sets. "
+                             "Mutually exclusive with --diff-base / --full-repo.")
     parser.add_argument("--full-repo", action="store_true",
                         help="Full scan (use with --model sonnet).")
     parser.add_argument("--autofix", action="store_true",
@@ -246,7 +251,7 @@ def main() -> int:
     # self-review-poisoning vector — see F1.
     if args.skill_path:
         skill_path = Path(args.skill_path).resolve()
-    elif args.diff_base:
+    elif args.diff_base or args.files:
         skill_path = PR_SKILL
     else:
         skill_path = FULL_SKILL
@@ -280,7 +285,31 @@ def main() -> int:
     plugin_dir = skill_path.parent.parent.parent.parent
 
     changed: list[str] = []
-    if args.diff_base:
+    if args.files:
+        # Caller supplied an explicit file list (e.g., the auto-review hook
+        # passing files it gathered, including untracked entries that
+        # git diff would miss). Filter out paths that don't exist on disk.
+        for f in args.files:
+            if (repo_dir / f).is_file():
+                changed.append(f)
+        if not changed:
+            print("No files to review.")
+            return 0
+        safe_changed = [re.sub(r"[^\w./\-]", "_", f) for f in changed]
+        file_list = "\n".join(f"- `{f}`" for f in safe_changed)
+        user_prompt = (
+            "Run the Soundcheck /pr-review gate on the following changed "
+            "files. This is mode 1 (PR gate): single-pass, no subagents, "
+            "Critical and High findings only.\n\n"
+            f"Changed files:\n{file_list}\n\n"
+            "You may read other files in the repo for context (imports, "
+            "callers, configs) but the findings table must contain only "
+            "entries from the changed files listed above. Skip Medium and "
+            "Low — those are mode 2's job."
+        )
+        mode = f"file list ({len(changed)} files)"
+        allowed_tools = "Read,Grep,Glob"
+    elif args.diff_base:
         changed = get_changed_files(repo_dir, args.diff_base)
         if not changed:
             print("No changed files. Nothing to review.")

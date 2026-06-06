@@ -31,9 +31,13 @@ toggle behavior honest.
 """
 from __future__ import annotations
 
+import fcntl
+import hashlib
+import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -49,6 +53,17 @@ PLUGIN_ROOT = Path(
     os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parent
 )
 ACTION = PLUGIN_ROOT / "scripts" / "security-review-action.py"
+
+# Per-project state directory under CLAUDE_PLUGIN_DATA (the docs-guaranteed
+# persistent location). Falls back to /tmp if the env var is missing.
+_STATE_BASE = Path(
+    os.environ.get("CLAUDE_PLUGIN_DATA")
+    or os.environ.get("TMPDIR", "/tmp")
+)
+_PROJECT_KEY = hashlib.sha256(str(PROJECT_DIR).encode()).hexdigest()[:16]
+LOCK_PATH = _STATE_BASE / f"auto-review-{_PROJECT_KEY}.lock"
+STATE_PATH = _STATE_BASE / f"auto-review-{_PROJECT_KEY}.state.json"
+STATE_TTL_SECONDS = 24 * 3600
 
 CODE_EXT = {
     ".py", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs",
@@ -81,11 +96,11 @@ def _git(*args: str) -> tuple[int, str]:
     return r.returncode, r.stdout
 
 
-def _gather() -> tuple[list[str], str]:
-    """Return (changed_code_files, content_for_risk_check)."""
+def _gather() -> tuple[list[str], list[str], str]:
+    """Return (all_code_files, untracked_code_files, content_for_triage)."""
     rc, _ = _git("rev-parse", "--git-dir")
     if rc != 0:
-        return [], ""
+        return [], [], ""
 
     rc, mod = _git("diff", "HEAD", "--name-only")
     modified = [f for f in mod.splitlines() if Path(f).suffix in CODE_EXT]
@@ -95,7 +110,7 @@ def _gather() -> tuple[list[str], str]:
 
     files = modified + untracked
     if not files:
-        return [], ""
+        return [], [], ""
 
     chunks: list[str] = []
     if modified:
@@ -112,7 +127,7 @@ def _gather() -> tuple[list[str], str]:
         except OSError:
             pass
 
-    return files, "\n".join(chunks)
+    return files, untracked, "\n".join(chunks)
 
 
 def _triage(content: str) -> bool:
@@ -137,6 +152,40 @@ def _triage(content: str) -> bool:
     return first.startswith("YES")
 
 
+def _load_state() -> dict:
+    try:
+        return json.loads(STATE_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_state(state: dict) -> None:
+    try:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STATE_PATH.write_text(json.dumps(state))
+    except OSError:
+        pass
+
+
+def _already_reviewed(state: dict, content_hash: str) -> bool:
+    """True if this exact diff was reviewed within STATE_TTL_SECONDS."""
+    entry = state.get(content_hash)
+    if not isinstance(entry, (int, float)):
+        return False
+    return (time.time() - entry) < STATE_TTL_SECONDS
+
+
+def _record_review(state: dict, content_hash: str) -> None:
+    now = time.time()
+    state[content_hash] = now
+    # Prune anything older than the TTL so the file stays tiny.
+    expired = [k for k, ts in state.items()
+               if not isinstance(ts, (int, float)) or now - ts >= STATE_TTL_SECONDS]
+    for k in expired:
+        state.pop(k, None)
+    _save_state(state)
+
+
 def main() -> int:
     triage_only = "--triage-only" in sys.argv
 
@@ -145,24 +194,72 @@ def main() -> int:
     if not triage_only and not ACTION.exists():
         return 0
 
-    files, content = _gather()
+    # Single-flight: if another auto-review.py is mid-run for this project,
+    # skip this fire entirely. Stale-by-one is fine — the next user turn
+    # will fire a fresh review against the latest state. Without this lock,
+    # rapid turn ends stack concurrent claude -p chains that compete for
+    # the same API quota and never produce a wake-up.
+    #
+    # Lock release rules (belt and suspenders):
+    #   - Normal return / exception: the finally block calls LOCK_UN + close
+    #   - Process crash / SIGKILL: the kernel closes FDs during teardown,
+    #     which releases the flock automatically
+    #   - Reboot: in-memory lock table is gone; lock file on disk is harmless
+    try:
+        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        lock_fd = open(LOCK_PATH, "w")
+    except OSError:
+        return 0
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_fd.close()
+        return 0
+    try:
+        return _main_locked(triage_only)
+    finally:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        lock_fd.close()
+
+
+def _main_locked(triage_only: bool) -> int:
+    files, untracked, content = _gather()
     if not files or not content.strip():
         return 0
 
+    # Diff-state cache: skip if we already reviewed this exact content
+    # within the TTL window. Hash includes both file content and the
+    # ordered file list to defeat false-positive cache hits.
+    state = _load_state()
+    content_hash = hashlib.sha256(
+        ("\n".join(sorted(files)) + "\n---\n" + content).encode()
+    ).hexdigest()
+    if _already_reviewed(state, content_hash):
+        return 0
+
     if not _triage(content):
+        _record_review(state, content_hash)
         return 0
 
     if triage_only:
         print("triage: YES", file=sys.stderr)
         return 2
 
+    # Pass the file list we captured in _gather() rather than letting
+    # security-review-action.py recompute via `git diff HEAD` — the diff
+    # excludes untracked files, and the working tree can change while the
+    # async hook is in flight. The list is a snapshot of what was present
+    # when the hook fired.
     cmd = [
         sys.executable,
         str(ACTION),
         "--repo-dir",
         str(PROJECT_DIR),
-        "--diff-base",
-        "HEAD",
+        "--files",
+        *files,
         "--model",
         "haiku",
         "--timeout",
@@ -170,6 +267,11 @@ def main() -> int:
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     out = proc.stdout or ""
+
+    # Whatever the review concluded, mark this content as reviewed so a
+    # repeat fire on the same diff (rapid turn ends with no new edits)
+    # doesn't burn another pr-review cycle.
+    _record_review(state, content_hash)
 
     if "<soundcheck-findings>[]" in out or "<soundcheck-findings>" not in out:
         return 0
