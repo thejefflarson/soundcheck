@@ -148,7 +148,27 @@ def _session_state_path(session_id: str) -> Path:
 
 
 def _touched_paths_file(session_id: str) -> Path:
-    return _STATE_BASE / f"auto-review-touched-{session_id}.json"
+    # Keyed by session AND project so concurrent Claude Code instances using
+    # the same session_id (resume / split window / continued session) in
+    # different repos don't stomp on each other's lists. v1.13.1 keyed by
+    # session only and cross-project writes corrupted the file.
+    return _STATE_BASE / f"auto-review-touched-{session_id}-{_PROJECT_KEY}.json"
+
+
+LOG_PATH = _STATE_BASE / "auto-review.log"
+
+
+def _log(stage: str, **kwargs) -> None:
+    """Append one JSON line per fire. Silent on failure (logging must not
+    block the actual review). Read with ``tail -f`` or ``jq``."""
+    entry = {"ts": round(time.time(), 3), "stage": stage, **kwargs}
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_PATH, "a") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            f.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
 
 
 def _consume_touched_paths(session_id: str | None) -> list[str]:
@@ -393,11 +413,13 @@ def main() -> int:
         LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
         lock_fd = open(LOCK_PATH, "w")
     except OSError:
+        _log("skip_lock_open_failed")
         return 0
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         lock_fd.close()
+        _log("skip_locked")
         return 0
     try:
         return _main_locked(triage_only)
@@ -410,11 +432,13 @@ def main() -> int:
 
 
 def _main_locked(triage_only: bool) -> int:
+    t_start = time.time()
     # Per-session baseline lets us include changes Claude has already
     # committed during this session, not just uncommitted ones. Falls
     # back to HEAD diff when no session id is available (CLI run, test
     # harness). See docs/auto-review-postmortem.md "v1.13 architecture".
     session_id = _session_id_from(_read_hook_event())
+    sid_short = (session_id or "")[:8]
     baseline = _baseline_sha(session_id)
     # PostToolUse records every Edit/Write/MultiEdit/NotebookEdit path
     # during the turn; consuming the list scopes review to this turn's
@@ -424,11 +448,13 @@ def _main_locked(triage_only: bool) -> int:
     touched = _consume_touched_paths(session_id)
     files, untracked, content = _gather(baseline, scope=touched or None)
     if not files or not content.strip():
+        _log("skip_no_files", session=sid_short, touched=len(touched))
         return 0
 
     # Free pre-triage filter: if the diff is only whitespace + comments,
     # skip the LLM call entirely. Common after a reformat or doc-only turn.
     if _is_trivial_diff(content):
+        _log("skip_trivial", session=sid_short, files=len(files))
         return 0
 
     # Diff-state cache: skip if we already reviewed this exact content
@@ -439,14 +465,19 @@ def _main_locked(triage_only: bool) -> int:
         ("\n".join(sorted(files)) + "\n---\n" + content).encode()
     ).hexdigest()
     if _already_reviewed(state, content_hash):
+        _log("skip_cache_hit", session=sid_short, files=len(files))
         return 0
 
     if not _triage(content):
         _record_review(state, content_hash)
+        _log("skip_triage_no", session=sid_short, files=len(files),
+             wall_s=round(time.time() - t_start, 1))
         return 0
 
     if triage_only:
         print("triage: YES", file=sys.stderr)
+        _log("triage_only_yes", session=sid_short, files=len(files),
+             wall_s=round(time.time() - t_start, 1))
         return 2
 
     # Pass the file list we captured in _gather() rather than letting
@@ -487,8 +518,13 @@ def _main_locked(triage_only: bool) -> int:
     # `<soundcheck-findings>` tag — current pr-review output is a
     # human-readable Markdown table without that machine-readable block.
     if proc.returncode != 1:
+        _log("clean" if proc.returncode == 0 else "review_error",
+             session=sid_short, files=len(files), pr_rc=proc.returncode,
+             wall_s=round(time.time() - t_start, 1))
         return 0
 
+    _log("findings", session=sid_short, files=len(files),
+         wall_s=round(time.time() - t_start, 1))
     print(
         "Soundcheck auto-review found issues in your recent edits. "
         "Address each finding or push back with a concrete reason.\n",

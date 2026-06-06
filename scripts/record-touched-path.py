@@ -72,8 +72,12 @@ def _state_dir() -> Path:
                 or os.environ.get("TMPDIR", "/tmp"))
 
 
-def _touched_paths_file(session_id: str) -> Path:
-    return _state_dir() / f"auto-review-touched-{session_id}.json"
+def _touched_paths_file(session_id: str, project_dir: Path) -> Path:
+    # Must match the naming convention in auto-review.py._touched_paths_file().
+    # Keyed by (session, project) so concurrent Claude Code instances sharing
+    # a session_id across different repos don't stomp on each other's lists.
+    project_key = hashlib.sha256(str(project_dir).encode()).hexdigest()[:16]
+    return _state_dir() / f"auto-review-touched-{session_id}-{project_key}.json"
 
 
 def main() -> int:
@@ -89,8 +93,8 @@ def main() -> int:
     except OSError:
         return 0
 
-    target = _touched_paths_file(sid)
     project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()).resolve()
+    target = _touched_paths_file(sid, project_dir)
 
     # Normalize to a project-relative path when possible — the Stop hook
     # consumes these as relative paths to match `git ls-files` / `git diff`

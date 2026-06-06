@@ -35,6 +35,25 @@ Cases:
       Assert: exit 2 (the script diffs against the baseline, sees the
       committed file as changed, surfaces findings). v1.13 regression check.
 
+  F — touched-paths intersection
+      Two untracked files (one risky, one benign); pre-seed touched list
+      with the benign one. Assert: scope shrinks to benign only, triage
+      NO, touched-paths file cleared atomically. v1.13.1 regression check.
+
+  G — trivial-diff short-circuit
+      Comments-only fixture. Assert: exit 0 in < 10s (no LLM call).
+      v1.13.1 regression check.
+
+  H — touched-paths file keyed per (session, project)
+      Two repos, same session_id. record-touched-path.py writes to each.
+      Assert two distinct files exist with the correct per-project content.
+      v1.13.2 regression check for the multi-session collision bug.
+
+  I — observability log
+      Any run leaves a JSON-line entry in ``$CLAUDE_PLUGIN_DATA/auto-review.log``.
+      Assert log file exists, parses as JSON lines, contains at least one
+      entry with a recognized stage name. v1.13.2 regression check.
+
 Total wall-clock: ~3-6 min, ~$0.05 per run on haiku. Slow + expensive
 enough that this is *not* part of CI; it's the regression check we run
 locally before tagging a release that touches the hook driver.
@@ -47,6 +66,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -228,6 +248,11 @@ COMMENTS_ONLY_PY = """\
 """
 
 
+def _project_key(project_dir: Path) -> str:
+    """Mirror auto-review.py._PROJECT_KEY computation for test pre-seeding."""
+    return hashlib.sha256(str(project_dir.resolve()).encode()).hexdigest()[:16]
+
+
 def case_f(tmp: Path, verbose: bool) -> bool:
     """touched_paths intersection: scope shrinks to this turn's touched files.
 
@@ -241,10 +266,11 @@ def case_f(tmp: Path, verbose: bool) -> bool:
     session_id = "e2e-touched-test"
     (repo / "app.py").write_text(RISKY_PY)      # untouched this turn
     (repo / "math.py").write_text(BENIGN_PY)    # the only path PostToolUse saw
-    # Pre-seed the touched-paths list with only math.py
-    (data / f"auto-review-touched-{session_id}.json").write_text(
-        json.dumps(["math.py"])
-    )
+    # Pre-seed the touched-paths list with only math.py. v1.13.2 keys the
+    # file by (session_id, project_hash) so concurrent same-session usage
+    # across repos doesn't collide.
+    touched_file = data / f"auto-review-touched-{session_id}-{_project_key(repo)}.json"
+    touched_file.write_text(json.dumps(["math.py"]))
     print("\n[F] touched-paths intersection — expect exit 0 (only benign in scope)")
     t0 = time.time()
     r = _spawn(repo, data, session_id=session_id)
@@ -256,7 +282,7 @@ def case_f(tmp: Path, verbose: bool) -> bool:
         and "Soundcheck auto-review found" not in r.stderr
     )
     # Also assert the touched-paths file got cleared atomically
-    cleared = (data / f"auto-review-touched-{session_id}.json").read_text() == "[]"
+    cleared = touched_file.read_text() == "[]"
     ok = ok and cleared
     print(f"  {'PASS' if ok else 'FAIL'}  rc={r.returncode}, "
           f"silent={'Soundcheck auto-review found' not in r.stderr}, "
@@ -325,9 +351,83 @@ def case_e(tmp: Path, verbose: bool) -> bool:
     return ok
 
 
+def case_h(tmp: Path, verbose: bool) -> bool:
+    """Touched-paths file is keyed per (session, project) — no cross-repo collision."""
+    repo_a, data = _init_repo(tmp, "H_a")
+    repo_b = tmp / "repo-H_b"
+    repo_b.mkdir()
+    _git(repo_b, "init", "-q")
+    _git(repo_b, "config", "user.email", "t@t")
+    _git(repo_b, "config", "user.name", "Test")
+    (repo_b / "seed.md").write_text("seed\n")
+    _git(repo_b, "add", "seed.md")
+    _git(repo_b, "commit", "-qm", "init")
+    session_id = "shared-session-id"
+    (repo_a / "a.py").write_text("x = 1\n")
+    (repo_b / "b.py").write_text("y = 2\n")
+
+    script = ROOT / "scripts" / "record-touched-path.py"
+    base_env = {**os.environ, "SOUNDCHECK_AUTO_REVIEW": "true",
+                "CLAUDE_PLUGIN_ROOT": str(ROOT), "CLAUDE_PLUGIN_DATA": str(data),
+                "CLAUDE_CODE_REMOTE_SESSION_ID": session_id}
+
+    for repo, fp in [(repo_a, repo_a / "a.py"), (repo_b, repo_b / "b.py")]:
+        env = {**base_env, "CLAUDE_PROJECT_DIR": str(repo)}
+        event = json.dumps({
+            "session_id": session_id,
+            "tool_input": {"file_path": str(fp)},
+        })
+        subprocess.run([sys.executable, str(script)], env=env, input=event,
+                       capture_output=True, text=True, check=False)
+
+    files = sorted(data.glob(f"auto-review-touched-{session_id}-*.json"))
+    print("\n[H] same session_id across two repos — expect two distinct files")
+    if verbose:
+        for f in files:
+            print(f"    {f.name}: {f.read_text()}")
+    distinct = len(files) == 2
+    contents = [json.loads(f.read_text()) for f in files] if distinct else []
+    correct = (distinct and all(len(c) == 1 for c in contents)
+               and {contents[0][0], contents[1][0]} == {"a.py", "b.py"})
+    print(f"  {'PASS' if correct else 'FAIL'}  files={len(files)}, "
+          f"contents_correct={correct}")
+    return correct
+
+
+def case_i(tmp: Path, verbose: bool) -> bool:
+    """Observability: a real run leaves a parseable JSON entry in auto-review.log."""
+    repo, data = _init_repo(tmp, "I")
+    (repo / "notes.py").write_text("# only comments\n# nothing else\n")
+    print("\n[I] observability log — expect a JSON-line entry post-run")
+    r = _spawn(repo, data)
+    log_path = data / "auto-review.log"
+    ok = log_path.is_file()
+    entries = []
+    if ok:
+        for line in log_path.read_text().splitlines():
+            try:
+                entries.append(json.loads(line))
+            except (json.JSONDecodeError, ValueError):
+                ok = False
+                break
+    valid_stages = {
+        "findings", "clean", "review_error", "skip_no_files", "skip_trivial",
+        "skip_cache_hit", "skip_triage_no", "skip_locked", "skip_lock_open_failed",
+        "triage_only_yes",
+    }
+    has_known_stage = any(e.get("stage") in valid_stages for e in entries)
+    ok = ok and has_known_stage and r.returncode == 0
+    if verbose:
+        for e in entries[-3:]:
+            print(f"    log: {e}")
+    print(f"  {'PASS' if ok else 'FAIL'}  log_exists={log_path.is_file()}, "
+          f"entries={len(entries)}, has_known_stage={has_known_stage}")
+    return ok
+
+
 CASES = {
     "A": case_a, "B": case_b, "C": case_c, "D": case_d,
-    "E": case_e, "F": case_f, "G": case_g,
+    "E": case_e, "F": case_f, "G": case_g, "H": case_h, "I": case_i,
 }
 
 
