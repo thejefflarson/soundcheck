@@ -219,6 +219,71 @@ def case_d(tmp: Path, verbose: bool) -> bool:
     return ok
 
 
+COMMENTS_ONLY_PY = """\
+# Notes on the Fibonacci sequence.
+# F(0) = 0, F(1) = 1, F(n) = F(n-1) + F(n-2).
+# Closed-form via Binet's formula uses the golden ratio.
+
+# TODO: write the implementation later.
+"""
+
+
+def case_f(tmp: Path, verbose: bool) -> bool:
+    """touched_paths intersection: scope shrinks to this turn's touched files.
+
+    Two untracked code files exist in the working tree (one risky, one
+    benign). The PostToolUse-recorded list only contains the benign one,
+    so review scope should be just that file — triage answers NO, exit 0.
+    Without the intersection the risky file would dominate the triage and
+    we'd run a full pr-review.
+    """
+    repo, data = _init_repo(tmp, "F")
+    session_id = "e2e-touched-test"
+    (repo / "app.py").write_text(RISKY_PY)      # untouched this turn
+    (repo / "math.py").write_text(BENIGN_PY)    # the only path PostToolUse saw
+    # Pre-seed the touched-paths list with only math.py
+    (data / f"auto-review-touched-{session_id}.json").write_text(
+        json.dumps(["math.py"])
+    )
+    print("\n[F] touched-paths intersection — expect exit 0 (only benign in scope)")
+    t0 = time.time()
+    r = _spawn(repo, data, session_id=session_id)
+    dt = time.time() - t0
+    if verbose:
+        print(f"    rc={r.returncode} wallclock={dt:.1f}s")
+    ok = (
+        r.returncode == 0
+        and "Soundcheck auto-review found" not in r.stderr
+    )
+    # Also assert the touched-paths file got cleared atomically
+    cleared = (data / f"auto-review-touched-{session_id}.json").read_text() == "[]"
+    ok = ok and cleared
+    print(f"  {'PASS' if ok else 'FAIL'}  rc={r.returncode}, "
+          f"silent={'Soundcheck auto-review found' not in r.stderr}, "
+          f"touched_cleared={cleared}, wallclock={dt:.1f}s")
+    return ok
+
+
+def case_g(tmp: Path, verbose: bool) -> bool:
+    """Trivial diff short-circuit: comments-only change exits without LLM call.
+
+    Any wallclock under ~3s implies no claude -p triage ran — the script
+    exited at the pre-triage filter. Generous bound for slow CI.
+    """
+    repo, data = _init_repo(tmp, "G")
+    (repo / "notes.py").write_text(COMMENTS_ONLY_PY)
+    print("\n[G] comments-only fixture — expect exit 0 + no LLM call")
+    t0 = time.time()
+    r = _spawn(repo, data)
+    dt = time.time() - t0
+    if verbose:
+        print(f"    rc={r.returncode} wallclock={dt:.2f}s")
+    ok = r.returncode == 0 and dt < 10
+    print(f"  {'PASS' if ok else 'FAIL'}  rc={r.returncode}, wallclock={dt:.2f}s "
+          f"({'no LLM call' if dt < 10 else 'LLM call ran (should not have)'})")
+    return ok
+
+
 def case_e(tmp: Path, verbose: bool) -> bool:
     """Session-baseline: vulnerable file committed during session is still reviewed.
 
@@ -260,7 +325,10 @@ def case_e(tmp: Path, verbose: bool) -> bool:
     return ok
 
 
-CASES = {"A": case_a, "B": case_b, "C": case_c, "D": case_d, "E": case_e}
+CASES = {
+    "A": case_a, "B": case_b, "C": case_c, "D": case_d,
+    "E": case_e, "F": case_f, "G": case_g,
+}
 
 
 def main() -> int:

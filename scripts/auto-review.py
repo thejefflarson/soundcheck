@@ -147,6 +147,70 @@ def _session_state_path(session_id: str) -> Path:
     return _STATE_BASE / f"auto-review-session-{session_id}.json"
 
 
+def _touched_paths_file(session_id: str) -> Path:
+    return _STATE_BASE / f"auto-review-touched-{session_id}.json"
+
+
+def _consume_touched_paths(session_id: str | None) -> list[str]:
+    """Atomically read + clear the PostToolUse-recorded path list.
+
+    Returns the paths Claude touched since the last consume — typically
+    the files edited during the just-finished turn. Returns [] if no
+    list exists, the session id is absent, or any IO fails. The Stop
+    hook intersects this with the baseline diff to restrict review
+    scope; an empty list means "fall back to the full baseline scope."
+    """
+    if not session_id:
+        return []
+    target = _touched_paths_file(session_id)
+    try:
+        with open(target, "r+") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            raw = f.read()
+            try:
+                paths = json.loads(raw) if raw else []
+            except (json.JSONDecodeError, ValueError):
+                paths = []
+            if not isinstance(paths, list):
+                paths = []
+            f.seek(0)
+            f.truncate()
+            f.write("[]")
+    except OSError:
+        return []
+    return [p for p in paths if isinstance(p, str) and p]
+
+
+# Stripping every per-language comment exactly is overkill for a triage
+# pre-filter. We just want to recognize "the diff is *only* trivia, no
+# real code." So we strip the common single-line comment forms and any
+# /* */ or <!-- --> block, then check whether anything non-whitespace
+# remains. False negatives (we miss a comment form) just cost the LLM
+# call we would have made anyway.
+_COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/|<!--.*?-->", re.DOTALL)
+_COMMENT_LINE_RE = re.compile(
+    r"^\s*(#|//|--|;{1,2}|%{1,2}|'{1,3})"
+)
+
+
+def _is_trivial_diff(content: str) -> bool:
+    """True if the gathered content is only whitespace + comments.
+
+    Cheap pre-stage filter so we don't burn a haiku triage on a turn
+    that only reformatted code or added a docstring.
+    """
+    if not content.strip():
+        return True
+    stripped = _COMMENT_BLOCK_RE.sub("", content)
+    for ln in stripped.splitlines():
+        if not ln.strip():
+            continue
+        if _COMMENT_LINE_RE.match(ln):
+            continue
+        return False
+    return True
+
+
 def _gc_old_session_state() -> None:
     """Best-effort sweep of stale per-session files. Called on new session init."""
     if not _STATE_BASE.is_dir():
@@ -195,12 +259,17 @@ def _baseline_sha(session_id: str | None) -> str | None:
     return sha
 
 
-def _gather(baseline: str | None) -> tuple[list[str], list[str], str]:
+def _gather(baseline: str | None, scope: list[str] | None = None) -> tuple[list[str], list[str], str]:
     """Return (all_code_files, untracked_code_files, content_for_triage).
 
     ``baseline`` is the diff base (typically the session-start SHA). When
     ``None``, falls back to ``HEAD`` so the script still works for ad-hoc
     CLI invocations outside a Claude Code hook context.
+
+    ``scope`` is the optional PostToolUse-recorded list of files Claude
+    actually touched this turn. When non-empty, we intersect the
+    baseline-derived modified set + untracked set with it so we only
+    review what just changed instead of everything since session start.
     """
     rc, _ = _git("rev-parse", "--git-dir")
     if rc != 0:
@@ -225,6 +294,10 @@ def _gather(baseline: str | None) -> tuple[list[str], list[str], str]:
     untracked = [f for f in unt.splitlines() if Path(f).suffix in CODE_EXT]
 
     files = modified + untracked
+    if scope:
+        scope_set = set(scope)
+        files = [f for f in files if f in scope_set]
+        untracked = [f for f in untracked if f in scope_set]
     if not files:
         return [], [], ""
 
@@ -343,8 +416,19 @@ def _main_locked(triage_only: bool) -> int:
     # harness). See docs/auto-review-postmortem.md "v1.13 architecture".
     session_id = _session_id_from(_read_hook_event())
     baseline = _baseline_sha(session_id)
-    files, untracked, content = _gather(baseline)
+    # PostToolUse records every Edit/Write/MultiEdit/NotebookEdit path
+    # during the turn; consuming the list scopes review to this turn's
+    # touches instead of the full baseline..HEAD set. Empty list falls
+    # back to the wider scope (correct for CLI runs and the very first
+    # fire of a session before any tool has run).
+    touched = _consume_touched_paths(session_id)
+    files, untracked, content = _gather(baseline, scope=touched or None)
     if not files or not content.strip():
+        return 0
+
+    # Free pre-triage filter: if the diff is only whitespace + comments,
+    # skip the LLM call entirely. Common after a reformat or doc-only turn.
+    if _is_trivial_diff(content):
         return 0
 
     # Diff-state cache: skip if we already reviewed this exact content
