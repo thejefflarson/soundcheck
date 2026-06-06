@@ -36,7 +36,7 @@ no PR comment cycle. You catch issues while the context is still fresh,
 not the next day.
 
 A one-shot haiku triage decides whether the diff warrants a full
-review, so most turns cost ~$0.001. Only diffs that plausibly introduce
+review, so most turns cost ~$0.003. Only diffs that plausibly introduce
 a vulnerability trigger the full `pr-review` — a few cents when it
 fires.
 

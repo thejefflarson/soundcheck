@@ -8,11 +8,13 @@ findings to Claude:
   1. Local file-extension gate (~10ms): only proceed if at least one
      changed file matches the code-file allowlist.
 
-  2. Haiku triage (~2-3s ideal, can run minutes on a heavily loaded
-     session, ~$0.001 either way): one short claude -p call asking
-     "does this diff need a security review?". Skips silently on NO or
-     parse failure. No timeout — the script runs detached via
-     asyncRewake, so a slow triage cannot block the user.
+  2. Haiku triage (~3s warm, ~30s+ cold start, ~$0.003 per call):
+     one short claude -p call asking "does this diff need a security
+     review?". The cost and latency come from claude -p loading every
+     enabled plugin's system prompt (~30K cached tokens) on each
+     invocation. Skips silently on NO or parse failure. No timeout —
+     the script runs detached via asyncRewake, so a slow triage cannot
+     block the user.
 
   3. Full pr-review (~30-60s on haiku): on triage YES, spawn
      security-review-action.py against the diff, surface findings to

@@ -51,21 +51,29 @@ honest.
 
 ## Cost discipline
 
-Per turn, in the worst case:
+Per turn, in the typical case:
 
 | Stage | Latency | Cost (approx) |
 |---|---|---|
 | 1 — Extension gate | ~10ms | free |
-| 2 — Haiku triage | 2-3s | ~$0.001 |
+| 2 — Haiku triage | ~3s warm, 30s+ cold start | ~$0.003 |
 | 3 — Full pr-review | 30-60s | $0.005-0.02 |
 
-For a session with a dozen turns of code-writing, that's $0.01-0.05
-end-to-end if every turn triggers stage 3 — typically far less because
-most turns are conversational or non-risky and stop at stage 2.
+For a session with a dozen turns of code-writing, that's ~$0.04 if
+every turn triggers stage 3 — usually far less because most turns are
+conversational or non-risky and stop at stage 2 (~$0.03 / 10 turns).
 
-The hook runs detached, so the user doesn't wait. Findings arrive a turn
-later if stage 3 fires; otherwise they arrive in the same turn that
-triggered them.
+The triage stage's $0.003 cost is dominated by the ~30K-token cached
+system prompt that `claude -p` loads on every invocation (your enabled
+plugins' skills, agents, CLAUDE.md). The actual question we ask haiku
+is a single sentence; the answer is one word. If you set
+`ANTHROPIC_API_KEY` and modify `scripts/auto-review.py` to pass
+`--bare`, triage drops to ~$0.0001 and <1s, but the OAuth path stops
+working — see the auto-review.py docstring for the tradeoff.
+
+The hook runs detached via asyncRewake, so you never wait on it.
+Findings arrive a turn later if stage 3 fires; otherwise they arrive in
+the same turn that triggered them.
 
 ## Testing the wire-up
 
