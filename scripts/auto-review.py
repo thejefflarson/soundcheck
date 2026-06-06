@@ -299,3 +299,4 @@ def _main_locked(triage_only: bool) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+# CI verification: triggers auto-review-e2e workflow.
