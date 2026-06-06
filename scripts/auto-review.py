@@ -8,9 +8,11 @@ findings to Claude:
   1. Local file-extension gate (~10ms): only proceed if at least one
      changed file matches the code-file allowlist.
 
-  2. Haiku triage (~2-3s, ~$0.001): one short claude -p call asking
-     "does this diff need a security review?". Skips silently on NO,
-     timeout, or parse failure.
+  2. Haiku triage (~2-3s ideal, can run minutes on a heavily loaded
+     session, ~$0.001 either way): one short claude -p call asking
+     "does this diff need a security review?". Skips silently on NO or
+     parse failure. No timeout — the script runs detached via
+     asyncRewake, so a slow triage cannot block the user.
 
   3. Full pr-review (~30-60s on haiku): on triage YES, spawn
      security-review-action.py against the diff, surface findings to
@@ -66,8 +68,6 @@ TRIAGE_INSTRUCTION = (
     "significant logic changes near a trust boundary — or NO otherwise. "
     "Output only the single word."
 )
-TRIAGE_TIMEOUT = 60
-
 
 def _git(*args: str) -> tuple[int, str]:
     r = subprocess.run(
@@ -114,16 +114,20 @@ def _gather() -> tuple[list[str], str]:
 
 
 def _triage(content: str) -> bool:
-    """One-shot haiku call: does this diff plausibly need a security review?"""
+    """One-shot haiku call: does this diff plausibly need a security review?
+
+    No timeout — claude -p latency on a fully-loaded session can run into
+    minutes (we observed ~108s on a routine call). The hook runs detached
+    via asyncRewake, so a slow triage doesn't block the user.
+    """
     try:
         r = subprocess.run(
             ["claude", "-p", "--model", "haiku",
              f"{TRIAGE_INSTRUCTION}\n\n{content}"],
             capture_output=True,
             text=True,
-            timeout=TRIAGE_TIMEOUT,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+    except FileNotFoundError:
         return False
     if r.returncode != 0 or not r.stdout:
         return False
