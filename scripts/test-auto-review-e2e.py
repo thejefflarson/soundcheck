@@ -29,6 +29,12 @@ Cases:
       no crypto). Assert: exit 0 and either stage 1 rejects or stage 2
       triage answers NO.
 
+  E — session-baseline catches committed changes
+      Initialize a session baseline at the seed commit, then add and
+      commit a vulnerable file. Run ``auto-review.py`` with the session id.
+      Assert: exit 2 (the script diffs against the baseline, sees the
+      committed file as changed, surfaces findings). v1.13 regression check.
+
 Total wall-clock: ~3-6 min, ~$0.05 per run on haiku. Slow + expensive
 enough that this is *not* part of CI; it's the regression check we run
 locally before tagging a release that touches the hook driver.
@@ -98,8 +104,15 @@ def _init_repo(tmp: Path, label: str) -> tuple[Path, Path]:
 
 
 def _spawn(repo: Path, data: Path, *,
-           background: bool = False) -> subprocess.Popen | subprocess.CompletedProcess:
-    """Run ``auto-review.py`` against (repo, data) with full env inheritance."""
+           background: bool = False,
+           session_id: str | None = None,
+           ) -> subprocess.Popen | subprocess.CompletedProcess:
+    """Run ``auto-review.py`` against (repo, data) with full env inheritance.
+
+    Passes ``session_id`` via ``CLAUDE_CODE_REMOTE_SESSION_ID`` when supplied —
+    that's the env-var fallback ``_session_id_from`` honors when no hook event
+    JSON is piped to stdin.
+    """
     env = {
         **os.environ,
         "CLAUDE_PROJECT_DIR": str(repo),
@@ -107,6 +120,8 @@ def _spawn(repo: Path, data: Path, *,
         "CLAUDE_PLUGIN_DATA": str(data),
         "SOUNDCHECK_AUTO_REVIEW": "true",
     }
+    if session_id is not None:
+        env["CLAUDE_CODE_REMOTE_SESSION_ID"] = session_id
     args = [sys.executable, str(SCRIPT)]
     if background:
         return subprocess.Popen(
@@ -204,7 +219,48 @@ def case_d(tmp: Path, verbose: bool) -> bool:
     return ok
 
 
-CASES = {"A": case_a, "B": case_b, "C": case_c, "D": case_d}
+def case_e(tmp: Path, verbose: bool) -> bool:
+    """Session-baseline: vulnerable file committed during session is still reviewed.
+
+    Without v1.13's baseline tracking, the script diffs against HEAD and the
+    committed file disappears from view. With baseline tracking (session id
+    set via CLAUDE_CODE_REMOTE_SESSION_ID), the diff is against the session-
+    start SHA and the committed file is visible.
+    """
+    repo, data = _init_repo(tmp, "E")
+    session_id = "e2e-baseline-test"
+    # Pre-seed the session state file so the baseline is the initial commit.
+    seed_sha = _git(repo, "rev-parse", "HEAD")[1].strip()
+    (data / f"auto-review-session-{session_id}.json").write_text(
+        json.dumps({"baseline_sha": seed_sha, "first_seen_ts": time.time()})
+    )
+    # Write + COMMIT the vulnerable file so it disappears from `git diff HEAD`.
+    (repo / "app.py").write_text(RISKY_PY)
+    _git(repo, "add", "app.py")
+    _git(repo, "commit", "-qm", "add vulnerable app")
+    print("\n[E] vulnerable file already committed — baseline should catch it")
+    t0 = time.time()
+    r = _spawn(repo, data, session_id=session_id)
+    dt = time.time() - t0
+    if verbose:
+        print(f"    rc={r.returncode} wallclock={dt:.1f}s")
+        if r.stderr:
+            for line in r.stderr.rstrip().splitlines()[-5:]:
+                print(f"    stderr: {line[:120]}")
+    ok = (
+        r.returncode == 2
+        and "Soundcheck auto-review found issues" in r.stderr
+        and "app.py" in r.stderr
+        and dt < 300
+    )
+    print(f"  {'PASS' if ok else 'FAIL'}  rc={r.returncode}, "
+          f"stderr_has_preamble={'Soundcheck auto-review found issues' in r.stderr}, "
+          f"stderr_mentions_file={'app.py' in r.stderr}, "
+          f"wallclock={dt:.1f}s")
+    return ok
+
+
+CASES = {"A": case_a, "B": case_b, "C": case_c, "D": case_d, "E": case_e}
 
 
 def main() -> int:

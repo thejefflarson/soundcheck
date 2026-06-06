@@ -266,16 +266,54 @@ dependency (use the documented public surface — in this case, the exit code).
    nobody had written down. The fix was to remove the assumption entirely
    and lean on a documented contract (exit code).
 
-## Current state (v1.12.8)
+## v1.13.0 — Session-baseline tracking
+
+**Coverage gap.** v1.12.x reviewed `git diff HEAD` + untracked files. So
+anything Claude wrote and then committed during the same session disappeared
+from view — a normal flow, not an edge case. Inspired by Anthropic's
+`security-guidance` plugin, which uses a session-start baseline SHA across
+all reviews.
+
+**Fix.** Auto-review now reads the hook event JSON on stdin to extract
+`session_id`. First fire snapshots `git rev-parse HEAD` into
+`$CLAUDE_PLUGIN_DATA/auto-review-session-<id>.json`. Subsequent fires diff
+against that SHA. Committed-during-session changes stay in scope until the
+session ends. 30-day GC on stale session-state files.
+
+**Scoping.** Per-session for baseline (two concurrent sessions in the same
+repo are different working states); **per-project** for lockfile + diff-state
+cache (correct dedup scope — don't double-review the same diff across
+sessions). Three state files now coexist under `$CLAUDE_PLUGIN_DATA`:
+
+```
+auto-review-<project_hash>.lock         # per-project, single-flight
+auto-review-<project_hash>.state.json   # per-project, content-hash cache (24h TTL)
+auto-review-session-<session_id>.json   # per-session, baseline SHA (30d TTL)
+```
+
+**Fallback.** When no `session_id` is available (CLI runs, test harness,
+non-hook contexts), the script falls back to diffing `HEAD`. Same behavior
+as v1.12.8 — no regression for non-hook callers.
+
+**Tested.** `scripts/test-auto-review-e2e.py` case E: writes a vulnerable
+file, commits it, runs `auto-review.py` with a pre-seeded session baseline
+at the initial commit. Verifies exit 2 + findings in stderr. Passes
+end-to-end at ~60s wallclock.
+
+## Current state (v1.13.0)
 
 The pipeline is correct end-to-end. The script:
 
-1. Acquires a per-project flock or exits 0.
-2. Gathers modified + untracked code files. Hashes content. Skips if cached.
-3. Runs `claude -p --model haiku` triage. Silent on NO.
-4. Runs `security-review-action.py --files X --no-preflight --model haiku`.
-5. Records the content hash regardless of outcome.
-6. If `rc == 1`, surfaces the Markdown findings table to stderr and exits 2;
+1. Reads hook event from stdin, derives a sanitized `session_id` (or
+   falls back to `CLAUDE_CODE_REMOTE_SESSION_ID` env, or `None`).
+2. Looks up the per-session baseline SHA (initializes on first fire).
+3. Acquires a per-project flock or exits 0.
+4. Gathers code files changed since the baseline + untracked code files.
+   Hashes content. Skips if cached.
+5. Runs `claude -p --model haiku` triage. Silent on NO.
+6. Runs `security-review-action.py --files X --no-preflight --model haiku`.
+7. Records the content hash regardless of outcome.
+8. If `rc == 1`, surfaces the Markdown findings table to stderr and exits 2;
    asyncRewake wakes Claude with the table as a system reminder.
 
 The remaining structural limitations are documented in
@@ -287,3 +325,6 @@ The remaining structural limitations are documented in
 - Per-call cost is ~$0.003 warm, ~$0.017 cold — about 17× our original docs
   claim before measurement.
 - No diff-state tracking *across* projects; each repo has its own cache.
+- No PostToolUse touched-paths list (security-guidance pattern). Would
+  catch the rare case where a file is edited then immediately reset in the
+  same turn but otherwise not visible from git state.

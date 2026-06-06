@@ -6,7 +6,7 @@ Fires after Claude finishes a turn. Three stages before surfacing
 findings to Claude:
 
   1. Local file-extension gate (~10ms): only proceed if at least one
-     changed file matches the code-file allowlist.
+     code-file has changed since the session baseline.
 
   2. Haiku triage (~3s warm, ~30s+ cold start, ~$0.003 per call):
      one short claude -p call asking "does this diff need a security
@@ -17,8 +17,17 @@ findings to Claude:
      block the user.
 
   3. Full pr-review (~30-60s on haiku): on triage YES, spawn
-     security-review-action.py against the diff, surface findings to
-     stderr, exit 2 (asyncRewake → wakes Claude).
+     security-review-action.py against the changed file list, surface
+     findings to stderr, exit 2 (asyncRewake → wakes Claude).
+
+Scope of "changed": files modified, added, or committed during the
+session, plus any currently untracked code files. The script reads the
+hook event JSON on stdin to get the Claude Code session_id, snapshots
+HEAD on first fire into ``$CLAUDE_PLUGIN_DATA/auto-review-session-
+<id>.json``, and diffs every subsequent fire against that baseline.
+This catches changes Claude has already committed during the session —
+``git diff HEAD`` alone would miss them. Falls back to ``HEAD`` diff
+when no session id is available (CLI runs, tests).
 
 Default-on. To disable, export SOUNDCHECK_AUTO_REVIEW=false in the shell
 before launching Claude Code.
@@ -35,10 +44,17 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+# git's hardcoded empty-tree SHA. Fallback baseline when the repo has no
+# commits yet (rare but possible when Claude is bootstrapping a new project).
+# Diffing against this lists every file in the working tree.
+_EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+_SESSION_STATE_TTL_SECONDS = 30 * 24 * 3600
 
 
 def _opted_out(v: str | None) -> bool:
@@ -96,14 +112,114 @@ def _git(*args: str) -> tuple[int, str]:
     return r.returncode, r.stdout
 
 
-def _gather() -> tuple[list[str], list[str], str]:
-    """Return (all_code_files, untracked_code_files, content_for_triage)."""
+def _read_hook_event() -> dict:
+    """Read the hook event JSON Claude Code pipes to subprocess stdin.
+
+    Returns ``{}`` when stdin is a tty (script run by hand), empty, or
+    unparseable — all callers treat absence as "no session info."
+    """
+    if sys.stdin.isatty():
+        return {}
+    try:
+        data = sys.stdin.read()
+    except OSError:
+        return {}
+    if not data:
+        return {}
+    try:
+        return json.loads(data)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _session_id_from(event: dict) -> str | None:
+    """Return a filesystem-safe session id, or None when no session is known."""
+    sid = event.get("session_id") or os.environ.get("CLAUDE_CODE_REMOTE_SESSION_ID")
+    if not sid:
+        return None
+    # Sanitize before using as a filename. CC session_ids are UUIDs in
+    # practice but nothing in the hook protocol guarantees it.
+    sid = re.sub(r"[^A-Za-z0-9._-]", "_", str(sid))[:128]
+    return sid or None
+
+
+def _session_state_path(session_id: str) -> Path:
+    return _STATE_BASE / f"auto-review-session-{session_id}.json"
+
+
+def _gc_old_session_state() -> None:
+    """Best-effort sweep of stale per-session files. Called on new session init."""
+    if not _STATE_BASE.is_dir():
+        return
+    cutoff = time.time() - _SESSION_STATE_TTL_SECONDS
+    try:
+        for p in _STATE_BASE.glob("auto-review-session-*.json"):
+            try:
+                if p.stat().st_mtime < cutoff:
+                    p.unlink()
+            except OSError:
+                continue
+    except OSError:
+        return
+
+
+def _baseline_sha(session_id: str | None) -> str | None:
+    """Return the baseline SHA for ``session_id``, initializing on first use.
+
+    First fire in a session snapshots the current HEAD and persists it.
+    Subsequent fires diff against that same SHA so commits made *during*
+    the session stay in scope until the session ends. Returns ``None`` when
+    no session id is available (e.g. ad-hoc CLI run); callers fall back to
+    diffing against ``HEAD``.
+    """
+    if not session_id:
+        return None
+    p = _session_state_path(session_id)
+    try:
+        existing = json.loads(p.read_text())
+        sha = existing.get("baseline_sha")
+        if isinstance(sha, str) and sha:
+            return sha
+    except (OSError, ValueError):
+        pass
+    rc, head = _git("rev-parse", "HEAD")
+    sha = head.strip() if rc == 0 and head.strip() else _EMPTY_TREE_SHA
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"baseline_sha": sha, "first_seen_ts": time.time()}))
+    except OSError:
+        # State write failed but the in-memory SHA still works for this fire;
+        # next fire will simply re-snapshot HEAD if state is still unwritable.
+        pass
+    _gc_old_session_state()
+    return sha
+
+
+def _gather(baseline: str | None) -> tuple[list[str], list[str], str]:
+    """Return (all_code_files, untracked_code_files, content_for_triage).
+
+    ``baseline`` is the diff base (typically the session-start SHA). When
+    ``None``, falls back to ``HEAD`` so the script still works for ad-hoc
+    CLI invocations outside a Claude Code hook context.
+    """
     rc, _ = _git("rev-parse", "--git-dir")
     if rc != 0:
         return [], [], ""
 
-    rc, mod = _git("diff", "HEAD", "--name-only")
-    modified = [f for f in mod.splitlines() if Path(f).suffix in CODE_EXT]
+    base = baseline or "HEAD"
+    # --diff-filter=ACMR matches the filter security-review-action.py applies
+    # via get_changed_files; D (deleted) is excluded since there's no file
+    # to read.
+    rc, mod = _git("diff", "--name-only", "--diff-filter=ACMR", base)
+    if rc != 0 and baseline and baseline != "HEAD":
+        # Baseline SHA may have been rewritten (rebase/reset). Fall back to
+        # HEAD so the hook still produces something this fire; the next
+        # session-init will re-snapshot.
+        rc, mod = _git("diff", "--name-only", "--diff-filter=ACMR", "HEAD")
+    modified = [
+        f for f in mod.splitlines()
+        if Path(f).suffix in CODE_EXT and (PROJECT_DIR / f).is_file()
+    ]
 
     rc, unt = _git("ls-files", "--others", "--exclude-standard")
     untracked = [f for f in unt.splitlines() if Path(f).suffix in CODE_EXT]
@@ -112,16 +228,11 @@ def _gather() -> tuple[list[str], list[str], str]:
     if not files:
         return [], [], ""
 
+    # Read each file's current on-disk content. With a session baseline, the
+    # "modified" set may include files committed during the session; their
+    # current content is what we want to triage on, not the incremental diff.
     chunks: list[str] = []
-    if modified:
-        rc, diff = _git("diff", "HEAD", "--unified=0", "--", *modified)
-        if rc == 0:
-            chunks.extend(
-                ln
-                for ln in diff.splitlines()
-                if ln.startswith("+") and not ln.startswith("+++")
-            )
-    for f in untracked:
+    for f in files:
         try:
             chunks.append((PROJECT_DIR / f).read_text(errors="replace"))
         except OSError:
@@ -226,7 +337,13 @@ def main() -> int:
 
 
 def _main_locked(triage_only: bool) -> int:
-    files, untracked, content = _gather()
+    # Per-session baseline lets us include changes Claude has already
+    # committed during this session, not just uncommitted ones. Falls
+    # back to HEAD diff when no session id is available (CLI run, test
+    # harness). See docs/auto-review-postmortem.md "v1.13 architecture".
+    session_id = _session_id_from(_read_hook_event())
+    baseline = _baseline_sha(session_id)
+    files, untracked, content = _gather(baseline)
     if not files or not content.strip():
         return 0
 
