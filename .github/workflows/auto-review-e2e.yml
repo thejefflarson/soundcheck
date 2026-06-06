@@ -1,0 +1,88 @@
+name: Auto-Review E2E
+
+# End-to-end test for the auto-review Stop hook driver. Runs scripts/
+# test-auto-review-e2e.py which spawns the real auto-review.py against
+# fixture repos and asserts the surface contract (exit 2 + findings in
+# stderr) plus lockfile and diff-state cache behavior.
+#
+# Triggers:
+#   - workflow_dispatch (manual)
+#   - PR / push to main only when files actually in the hook driver
+#     surface change. Skips routine docs/skills churn so we don't burn
+#     ~$0.05 + ~5 minutes on every commit.
+on:
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: "Print per-case stderr details"
+        type: boolean
+        default: false
+      case:
+        description: "Single case to run (A/B/C/D), leave blank for all"
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - "scripts/auto-review.py"
+      - "scripts/security-review-action.py"
+      - "scripts/test-auto-review-e2e.py"
+      - ".claude/hooks/hooks.json"
+      - ".github/workflows/auto-review-e2e.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/auto-review.py"
+      - "scripts/security-review-action.py"
+      - "scripts/test-auto-review-e2e.py"
+      - ".claude/hooks/hooks.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Auto-review pipeline end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: "20"
+
+      - name: Install claude CLI
+        run: npm install -g '@anthropic-ai/claude-code@2.1.159'
+
+      - name: Run auto-review E2E
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CASE: ${{ github.event.inputs.case }}
+          VERBOSE: ${{ github.event.inputs.verbose }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${CASE:-}" ]; then args+=(--case "$CASE"); fi
+          if [ "${VERBOSE:-}" = "true" ]; then args+=(--verbose); fi
+          python scripts/test-auto-review-e2e.py "${args[@]}" 2>&1 | tee /tmp/e2e-output.txt
+          exit "${PIPESTATUS[0]}"
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "## Auto-Review E2E"
+            echo
+            echo "Model: \`claude-haiku-4-5\` (default)"
+            echo "Cases: \`${{ github.event.inputs.case || 'A,B,C,D' }}\`"
+            echo
+            echo '```'
+            tail -30 /tmp/e2e-output.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
