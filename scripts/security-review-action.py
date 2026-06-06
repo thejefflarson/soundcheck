@@ -222,6 +222,14 @@ def main() -> int:
                              "--repo-dir). Bypasses git diff so callers can "
                              "review untracked files or pre-staged sets. "
                              "Mutually exclusive with --diff-base / --full-repo.")
+    parser.add_argument("--no-preflight", action="store_true",
+                        help="Skip the `claude -p` liveness check. Useful "
+                             "when the caller has already verified the CLI "
+                             "(e.g. the auto-review Stop hook, which made "
+                             "a triage call seconds earlier). The 30s "
+                             "preflight timeout is shorter than cold-start "
+                             "plugin-load latency, so it falsely fails in "
+                             "fully-plugged sessions.")
     parser.add_argument("--full-repo", action="store_true",
                         help="Full scan (use with --model sonnet).")
     parser.add_argument("--autofix", action="store_true",
@@ -355,20 +363,21 @@ def main() -> int:
     # third-party providers (Bedrock/Vertex inference profiles without
     # the matching env vars, etc.) in seconds instead of after the full
     # timeout with no visible output. See issue #10.
-    try:
-        preflight_claude(args.model)
-    except ClaudeCLIError as exc:
-        print(
-            f"ERROR: claude preflight failed for model={args.model!r}: "
-            f"{exc}\n"
-            "Hint: soundcheck shells out to `claude -p --model <X>`, so "
-            "--model accepts whatever the claude CLI accepts. For "
-            "Bedrock/Vertex set CLAUDE_CODE_USE_BEDROCK=1 (or "
-            "CLAUDE_CODE_USE_VERTEX=1) and the matching provider "
-            "credentials in your environment.",
-            file=sys.stderr,
-        )
-        return 2
+    if not args.no_preflight:
+        try:
+            preflight_claude(args.model)
+        except ClaudeCLIError as exc:
+            print(
+                f"ERROR: claude preflight failed for model={args.model!r}: "
+                f"{exc}\n"
+                "Hint: soundcheck shells out to `claude -p --model <X>`, so "
+                "--model accepts whatever the claude CLI accepts. For "
+                "Bedrock/Vertex set CLAUDE_CODE_USE_BEDROCK=1 (or "
+                "CLAUDE_CODE_USE_VERTEX=1) and the matching provider "
+                "credentials in your environment.",
+                file=sys.stderr,
+            )
+            return 2
 
     try:
         response = run_claude(

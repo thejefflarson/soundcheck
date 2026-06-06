@@ -264,6 +264,11 @@ def _main_locked(triage_only: bool) -> int:
         "haiku",
         "--timeout",
         "180",
+        # We already verified the CLI works via the triage call above.
+        # security-review-action.py's 30s preflight is shorter than the
+        # plugin-load cold-start, so it false-fails in fully-plugged
+        # sessions and silently exits the entire chain.
+        "--no-preflight",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     out = proc.stdout or ""
