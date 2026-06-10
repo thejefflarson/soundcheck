@@ -54,6 +54,11 @@ Cases:
       Assert log file exists, parses as JSON lines, contains at least one
       entry with a recognized stage name. v1.13.2 regression check.
 
+  J — multi-repo refactor
+      Touched paths span two separate git repos; only one has a vulnerable
+      file. Assert findings include the risky repo's path and the
+      touched-paths file is cleared. v1.14 regression check.
+
 Total wall-clock: ~3-6 min, ~$0.05 per run on haiku. Slow + expensive
 enough that this is *not* part of CI; it's the regression check we run
 locally before tagging a release that touches the hook driver.
@@ -425,9 +430,63 @@ def case_i(tmp: Path, verbose: bool) -> bool:
     return ok
 
 
+def case_j(tmp: Path, verbose: bool) -> bool:
+    """Multi-repo refactor: edits span two repos, the vulnerable one gets reviewed.
+
+    Two separate git repos. PostToolUse pre-seeded with absolute paths in
+    both. The auto-review.py bucket-and-dispatch should review each repo
+    against its own baseline. Only repo A has the vulnerable file; we
+    assert findings include repo A's path and the touched-paths file is
+    cleared. v1.14 regression check for cross-repo refactor coverage.
+    """
+    repo_a, data = _init_repo(tmp, "J_a")
+    repo_b = tmp / "repo-J_b"
+    repo_b.mkdir()
+    _git(repo_b, "init", "-q")
+    _git(repo_b, "config", "user.email", "t@t")
+    _git(repo_b, "config", "user.name", "Test")
+    (repo_b / "README.md").write_text("seed\n")
+    _git(repo_b, "add", "README.md")
+    _git(repo_b, "commit", "-qm", "init")
+    (repo_a / "app.py").write_text(RISKY_PY)
+    (repo_b / "calc.py").write_text(BENIGN_PY)
+
+    session_id = "e2e-multirepo-test"
+    # PostToolUse records absolute paths when the edit is outside CLAUDE_PROJECT_DIR.
+    # auto-review.py's record-touched-path keys the file by (session, project_hash),
+    # so seed it for repo_a (the "launching" project here).
+    touched_file = data / (
+        f"auto-review-touched-{session_id}-{_project_key(repo_a)}.json"
+    )
+    touched_file.write_text(json.dumps([
+        str(repo_a / "app.py"),
+        str(repo_b / "calc.py"),
+    ]))
+    print("\n[J] cross-repo refactor — expect findings from repo A only")
+    t0 = time.time()
+    r = _spawn(repo_a, data, session_id=session_id)
+    dt = time.time() - t0
+    if verbose:
+        print(f"    rc={r.returncode} wallclock={dt:.1f}s")
+        for line in r.stderr.rstrip().splitlines()[-8:]:
+            print(f"    stderr: {line[:120]}")
+    has_preamble = "Soundcheck auto-review found issues" in r.stderr
+    mentions_app = "app.py" in r.stderr
+    excludes_calc = "calc.py" not in r.stderr or "BENIGN" not in r.stderr.upper()
+    ok = (
+        r.returncode == 2 and has_preamble and mentions_app and excludes_calc
+        and touched_file.read_text() == "[]"
+    )
+    print(f"  {'PASS' if ok else 'FAIL'}  rc={r.returncode}, "
+          f"preamble={has_preamble}, app_mentioned={mentions_app}, "
+          f"cleared={touched_file.read_text() == '[]'}, wallclock={dt:.1f}s")
+    return ok
+
+
 CASES = {
     "A": case_a, "B": case_b, "C": case_c, "D": case_d,
     "E": case_e, "F": case_f, "G": case_g, "H": case_h, "I": case_i,
+    "J": case_j,
 }
 
 
