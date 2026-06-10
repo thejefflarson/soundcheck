@@ -1,6 +1,6 @@
 {
   "name": "soundcheck",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "description": "Automated OWASP security checks \u2014 Web Top 10:2025, LLM Top 10:2025, API Security Top 10:2023",
   "author": {
     "name": "Jeff Larson",
