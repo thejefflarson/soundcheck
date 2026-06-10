@@ -387,8 +387,11 @@ def _gather(repo_root: Path, baseline: str | None, scope: list[str] | None = Non
     return files, untracked, "\n".join(chunks)
 
 
-def _triage(content: str) -> bool:
+def _triage(content: str) -> tuple[bool, str]:
     """One-shot haiku call: does this diff plausibly need a security review?
+
+    Returns ``(answered_yes, diag)`` where ``diag`` summarizes any failure
+    (rc, stderr tail) for the observability log. Empty diag on success.
 
     No timeout — claude -p latency on a fully-loaded session can run into
     minutes (we observed ~108s on a routine call). The hook runs detached
@@ -402,11 +405,14 @@ def _triage(content: str) -> bool:
             text=True,
         )
     except FileNotFoundError:
-        return False
-    if r.returncode != 0 or not r.stdout:
-        return False
+        return False, "claude CLI not on PATH"
+    if r.returncode != 0:
+        tail = (r.stderr or r.stdout or "").strip()[-200:]
+        return False, f"rc={r.returncode}: {tail!r}"
+    if not r.stdout:
+        return False, "empty stdout"
     first = r.stdout.strip().splitlines()[0].strip().upper() if r.stdout.strip() else ""
-    return first.startswith("YES")
+    return first.startswith("YES"), ""
 
 
 def _load_state(repo_key: str) -> dict:
@@ -559,10 +565,12 @@ def _review_one_repo_locked(repo_root: Path, repo_key: str, repo_short: str,
              files=len(files))
         return 0, ""
 
-    if not _triage(content):
+    triage_yes, triage_diag = _triage(content)
+    if not triage_yes:
         _record_review(repo_key, state, content_hash)
         _log("skip_triage_no", session=sid_short, repo=repo_short,
-             files=len(files), wall_s=round(time.time() - t_start, 1))
+             files=len(files), wall_s=round(time.time() - t_start, 1),
+             **({"diag": triage_diag} if triage_diag else {}))
         return 0, ""
 
     if triage_only:

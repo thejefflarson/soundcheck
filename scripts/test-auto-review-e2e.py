@@ -325,9 +325,10 @@ def case_e(tmp: Path, verbose: bool) -> bool:
     """
     repo, data = _init_repo(tmp, "E")
     session_id = "e2e-baseline-test"
-    # Pre-seed the session state file so the baseline is the initial commit.
+    # Pre-seed the per-(session, repo) baseline file so the diff base is
+    # the initial commit. v1.14 added the repo_key suffix to the name.
     seed_sha = _git(repo, "rev-parse", "HEAD")[1].strip()
-    (data / f"auto-review-session-{session_id}.json").write_text(
+    (data / f"auto-review-session-{session_id}-{_project_key(repo)}.json").write_text(
         json.dumps({"baseline_sha": seed_sha, "first_seen_ts": time.time()})
     )
     # Write + COMMIT the vulnerable file so it disappears from `git diff HEAD`.
@@ -504,6 +505,19 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="auto-review-e2e-"))
     try:
         results = {c: CASES[c](tmp, args.verbose) for c in selected}
+        # On any failure, dump every auto-review.log we created across the
+        # per-case data dirs. Diagnostics for triage failures (claude -p
+        # CLI auth/missing) and other silent skips live here.
+        if not all(results.values()):
+            print()
+            print("=" * 60)
+            print("auto-review.log dumps (failure diagnostic):")
+            for log in sorted(tmp.glob("plugin-data-*/auto-review.log")):
+                print(f"\n--- {log.parent.name} ---")
+                try:
+                    print(log.read_text())
+                except OSError as exc:
+                    print(f"(read failed: {exc})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
