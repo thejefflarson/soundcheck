@@ -39,21 +39,6 @@ from pathlib import Path
 PLUGIN_NAME = "auto-review-env-test"
 
 
-def get_api_key() -> str | None:
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return os.environ["ANTHROPIC_API_KEY"]
-    if not shutil.which("op"):
-        return None
-    r = subprocess.run(
-        ["op", "item", "get", "ANTHROPIC_API_KEY",
-         "--reveal", "--fields", "credential"],
-        capture_output=True, text=True,
-    )
-    if r.returncode == 0 and r.stdout.strip():
-        return r.stdout.strip()
-    return None
-
-
 def build_temp_plugin(plugin_dir: Path, dump_path: Path) -> None:
     """Minimal plugin: matches soundcheck's userConfig shape, Stop hook
     dumps env to dump_path."""
@@ -86,36 +71,38 @@ def build_temp_plugin(plugin_dir: Path, dump_path: Path) -> None:
     }, indent=2))
 
 
-def write_settings(home: Path, plugin_options: dict | None) -> None:
-    """Stage a ~/.claude/settings.json that pre-sets userConfig options.
+def write_settings_file(path: Path, plugin_options: dict | None) -> Path | None:
+    """Write a stub settings.json containing just this test's pluginConfigs.
 
-    A None plugin_options means "no settings.json at all" — exercises the
-    cold-install path where the user has never seen the enable prompt.
+    Returns the path so the caller can hand it to claude via ``--settings``.
+    Returns None if ``plugin_options`` is None (cold-install case — no
+    config; claude reads only the user's real settings.json which has no
+    entry for our throwaway plugin name).
     """
-    claude_dir = home / ".claude"
-    claude_dir.mkdir(parents=True, exist_ok=True)
-    settings_path = claude_dir / "settings.json"
     if plugin_options is None:
-        if settings_path.exists():
-            settings_path.unlink()
-        return
-    settings_path.write_text(json.dumps({
-        "pluginConfigs": {
-            PLUGIN_NAME: {"options": plugin_options}
-        }
+        return None
+    path.write_text(json.dumps({
+        "pluginConfigs": {PLUGIN_NAME: {"options": plugin_options}}
     }, indent=2))
+    return path
 
 
-def run_claude(plugin_dir: Path, home: Path, api_key: str,
+def run_claude(plugin_dir: Path, settings_path: Path | None,
                verbose: bool) -> tuple[int, str, str]:
-    env = {
-        **os.environ,
-        "ANTHROPIC_API_KEY": api_key,
-        "HOME": str(home),
-    }
+    """Run claude -p against the throwaway plugin.
+
+    Uses the user's real HOME. claude -p picks up whatever auth is
+    available — ANTHROPIC_API_KEY in the environment if set, otherwise
+    OAuth from the logged-in session. The test doesn't care which.
+    ``--settings`` is layered on top to control just this test's
+    pluginConfigs without touching the user's real settings.json.
+    """
+    cmd = ["claude", "-p", "--plugin-dir", str(plugin_dir)]
+    if settings_path:
+        cmd += ["--settings", str(settings_path)]
+    cmd.append("say hi")
     r = subprocess.run(
-        ["claude", "-p", "--plugin-dir", str(plugin_dir), "say hi"],
-        env=env, capture_output=True, text=True, timeout=180,
+        cmd, capture_output=True, text=True, timeout=180,
     )
     if verbose:
         print(f"    claude exit={r.returncode}")
@@ -146,27 +133,24 @@ def find_autoreview_var(env: dict[str, str]) -> tuple[str, str] | None:
 
 
 def run_case(name: str, plugin_options: dict | None, expected_value: str,
-             tmp: Path, api_key: str, verbose: bool) -> bool:
+             tmp: Path, verbose: bool) -> bool:
     print(f"\n=== {name} ===")
     if plugin_options is None:
-        print("    settings.json: <absent>")
+        print(f"    settings: --settings <absent> (cold install)")
     else:
-        print(f"    settings.json: pluginConfigs.{PLUGIN_NAME}.options="
+        print(f"    settings: pluginConfigs.{PLUGIN_NAME}.options="
               f"{json.dumps(plugin_options)}")
 
     plugin_dir = tmp / f"plugin-{name}"
-    home = tmp / f"home-{name}"
+    settings_path = tmp / f"settings-{name}.json"
     dump = tmp / f"env-{name}.dump"
     if plugin_dir.exists():
         shutil.rmtree(plugin_dir)
-    if home.exists():
-        shutil.rmtree(home)
     plugin_dir.mkdir()
-    home.mkdir()
 
     build_temp_plugin(plugin_dir, dump)
-    write_settings(home, plugin_options)
-    rc, _, stderr = run_claude(plugin_dir, home, api_key, verbose)
+    settings = write_settings_file(settings_path, plugin_options)
+    rc, _, stderr = run_claude(plugin_dir, settings, verbose)
 
     if not dump.exists():
         print(f"    FAIL  Stop hook did not fire (claude exit={rc})")
@@ -203,20 +187,14 @@ def main() -> int:
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
-    api_key = get_api_key()
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not in env and `op` failed.",
-              file=sys.stderr)
-        return 2
-
     tmp = Path(tempfile.mkdtemp(prefix="hook-env-test-"))
     try:
         results = [
-            run_case("A_no_settings", None, "true", tmp, api_key, args.verbose),
+            run_case("A_no_settings", None, "true", tmp, args.verbose),
             run_case("B_explicit_true", {"autoReview": True}, "true", tmp,
-                     api_key, args.verbose),
+                     args.verbose),
             run_case("C_explicit_false", {"autoReview": False}, "false", tmp,
-                     api_key, args.verbose),
+                     args.verbose),
         ]
         passed = sum(results)
         total = len(results)

@@ -7,25 +7,22 @@ description: Deep review that audits API contracts for mismatches between what c
 
 ## What this checks
 
-Bugs whose vulnerability only resolves across both sides of a
-contract — a helper whose body guarantees less than its callers
-assume. `security-review` pattern-matches 45 OWASP/LLM categories;
-this exists for what that misses. Fine for nightly CI or manual
-audits; not for per-PR review.
+Bugs that only resolve across both sides of a contract — a helper
+whose body guarantees less than callers assume. `security-review`
+pattern-matches 45 OWASP/LLM categories; this exists for what that
+misses. Nightly CI or manual audits; not per-PR.
 
 ## Vulnerable patterns
 
 Deliberately none. Pattern lists bias the search; `contract-audit`
 uses one open question per hotspot — *what does the caller assume
-that the body doesn't enforce?* — and the orchestrator (this skill)
-does not inspect code itself.
+that the body doesn't enforce?* — and the orchestrator does not
+inspect code.
 
 ## Procedure
 
-Use the **Agent** tool to dispatch subagents. Do not audit code
-yourself — subagents read, you orchestrate. Keep all state in
-conversation memory; do not write files. The findings table you
-emit at the end *is* the output.
+Use the **Agent** tool to dispatch subagents. Don't audit yourself.
+Keep state in conversation memory; don't write files.
 
 ### Stage 0 — Threat model
 
@@ -73,41 +70,42 @@ Stop conditions (in priority order):
 
 ### Stage 3 — Render
 
-Emit two outputs.
+**Primary output is a human Markdown report.** JSON blocks are a
+machine-readable trailer — NOT a substitute for prose. Emit in order:
 
-First, a Markdown table sorted by severity (Critical → Low) for
-humans:
-
-| Severity | Impl | Caller | Gap | Trigger |
-
-Then one summary line.
-
-Then the machine-readable JSON, in two tagged blocks. **Both blocks
-are required, even if `findings` is empty.**
+1. `# Contract Review` heading.
+2. **Findings table** sorted by severity (Critical → Low):
+   `| Severity | Impl | Caller | Gap | Trigger |`. Zero findings:
+   skip the table; write `No contract gaps found across N hotspots,
+   R rounds.`
+3. **Per-finding details** — one `### <Severity>: <impl> ↔ <caller>`
+   heading each, then `gap`, `trigger`, and a short `guards_traced`
+   summary as prose. This is what reviewers actually read.
+4. **Summary line:** `N findings across M hotspots, R rounds
+   (stopped: <reason>).`
+5. **JSON trailer** in two tagged blocks (required even when empty):
 
 ```
 <soundcheck-contract>
-[
-  {"severity": "Critical | High | Medium | Low",
-   "impl": "<file>:<line>", "caller": "<file>:<line>",
-   "gap": "<one-sentence divergence>",
-   "trigger": "<2–4 line concrete attacker scenario>",
-   "guards_traced": [ ...verbatim from contract-audit... ],
-   "hotspot_key": "<key>", "round": N}
-]
+[{"severity":"Critical|High|Medium|Low",
+  "impl":"<file>:<line>","caller":"<file>:<line>",
+  "gap":"<one-sentence divergence>",
+  "trigger":"<2–4 line attacker scenario>",
+  "guards_traced":[...],
+  "hotspot_key":"<key>","round":N}]
 </soundcheck-contract>
 
 <soundcheck-contract-summary>
-{"rounds": R, "verified": N, "hotspots_probed": M,
- "stopped": "max_rounds | max_hours | stagnation | exhausted"}
+{"rounds":R,"verified":N,"hotspots_probed":M,
+ "stopped":"max_rounds|max_hours|stagnation|exhausted"}
 </soundcheck-contract-summary>
 ```
 
-Mirrors `<soundcheck-findings>` from `security-review` so downstream
-tooling can parse both modes the same way.
-
 ## Verification
 
+- [ ] Markdown findings table is rendered BEFORE the JSON blocks
+      (the prose is the primary output)
+- [ ] Per-finding details section is present (one heading per finding)
 - [ ] Every row in the findings table corresponds to one entry in
       the `<soundcheck-contract>` JSON array
 - [ ] Every JSON entry has `severity`, `impl`, `caller`, `gap`,
