@@ -9,12 +9,11 @@ description: Runs a full OWASP/CWE security audit via isolated subagents. Use wh
 
 ## What this checks
 
-Full repo audit against the OWASP Web Top 10:2025 + LLM Top 10:2025
-catalogs, run via a four-stage pipeline: threat-model → hotspots →
-review → validate. Main context never reads code; it dispatches
-subagents (`threat-modeling`, `hotspot-mapping`, `vulnerability-audit`,
-`design-review`, `finding-validate`, `attack-chain-analysis`) and
-renders findings.
+Full repo audit against OWASP Web + LLM Top 10:2025 via a four-stage
+pipeline: threat-model → hotspots → review → validate. Main context
+dispatches subagents (`threat-modeling`, `hotspot-mapping`,
+`vulnerability-audit`, `design-review`, `finding-validate`,
+`attack-chain-analysis`) and renders findings; never reads code.
 
 ## Vulnerable patterns
 
@@ -48,16 +47,15 @@ Copy this checklist as you progress:
 
 ### Stage 0 — Threat model
 
-Dispatch one `threat-modeling` subagent. It returns JSON describing
-purpose, deployment, trusted_inputs, and untrusted_inputs. Thread
-this JSON into every later subagent as context.
+Dispatch one `threat-modeling` subagent. It returns JSON with
+purpose, deployment, trusted_inputs, untrusted_inputs. Thread this
+into every later subagent.
 
 ### Stage 1 — Hotspot map
 
-Dispatch **one** `hotspot-mapping` subagent with the threat model
-JSON. The subagent scans the whole repo and returns a JSON array
-of `{file, lines, name, category, priority, why}` entries. Use
-that array as the hotspot list for Stage 2.
+Dispatch **one** `hotspot-mapping` subagent with the threat model.
+Returns a JSON array of `{file, lines, name, category, priority, why}`
+entries — the hotspot list for Stage 2.
 
 ### Stages 1b + 2 — Design review and vulnerability audit (parallel)
 
@@ -65,8 +63,10 @@ that array as the hotspot list for Stage 2.
 Then **in a SINGLE message**, dispatch:
 
 - One `design-review` subagent with the threat model.
-- One `vulnerability-audit` subagent **per file** with that file's
-  hotspot list. Serial launches defeat parallelism.
+- One `vulnerability-audit` subagent **per file** with the threat
+  model AND that file's hotspot list. `trusted_inputs` /
+  `untrusted_inputs` informs which sinks are reachable. Serial
+  launches defeat parallelism.
 
 Concatenate every returned findings array. Dedupe by `(file, line)`.
 
@@ -80,9 +80,10 @@ the indicated indices before Stage 3.
 
 ### Stage 3 — Attack-chain analysis
 
-Dispatch one `attack-chain-analysis` subagent with the merged
-findings. It returns chain objects with plain-English narratives, or
-`[]`.
+Dispatch one `attack-chain-analysis` subagent with the threat model
+AND the merged findings. The threat model informs effective severity
+(does the chain cross an untrusted boundary?). Returns chain objects
+with plain-English narratives, or `[]`.
 
 ### Stage 4 — Render
 
@@ -92,14 +93,13 @@ radius. Low = defense-in-depth.* Then a findings table:
 **Severity / Where / What's wrong / How to fix** (use the auditor's
 `finding`/`fix` verbatim; append `(category: <skill>)` to *What's
 wrong*). If chains exist, emit `## Attack chains` with
-`### Chain N — <effective_severity>` per chain and the narrative as
-prose. One summary line. Zero findings: `Security review complete.
-No findings across N hotspots.`
+`### Chain N — <effective_severity>` per chain as prose. One summary
+line. Zero findings: `Security review complete. No findings across
+N hotspots.`
 
 ### Stage 5 — Cleanup
 
-After rendering, suggest running `/security-cleanup` to apply fixes
-interactively. Do not auto-rewrite files.
+Suggest `/security-cleanup` to apply fixes. Do not auto-rewrite.
 
 ## Verification
 
