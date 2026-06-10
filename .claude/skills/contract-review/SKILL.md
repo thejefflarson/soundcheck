@@ -83,10 +83,6 @@ Output is a human-readable Markdown report. Emit in this order:
 4. **Summary line:** `N findings across M hotspots, R rounds
    (stopped: <reason>).`
 
-No JSON trailer. Callers that need a machine-readable schema (the
-benchmark harness, custom CI scripts) append their own format
-requirement to the user prompt.
-
 ## Verification
 
 - [ ] Markdown findings table is present (or the "No contract gaps
