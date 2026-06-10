@@ -61,11 +61,12 @@ that array as the hotspot list for Stage 2.
 
 ### Stages 1b + 2 — Design review and vulnerability audit (parallel)
 
-**In a SINGLE message**, dispatch:
+**Collapse hotspots by file first** — group into `{file: [hotspots]}`.
+Then **in a SINGLE message**, dispatch:
 
 - One `design-review` subagent with the threat model.
-- One `vulnerability-audit` subagent per chunk of ≤5 hotspots. Every
-  hotspot must be in some chunk; serial launches defeat parallelism.
+- One `vulnerability-audit` subagent **per file** with that file's
+  hotspot list. Serial launches defeat parallelism.
 
 Concatenate every returned findings array. Dedupe by `(file, line)`.
 
