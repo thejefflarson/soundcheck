@@ -16,6 +16,11 @@ the loop, the budget, and the state on disk.
 
 The user message contains:
 
+- The threat model JSON from `threat-modeling` (purpose, deployment,
+  `trusted_inputs`, `untrusted_inputs`). Use it for severity and
+  reachability: a divergence whose caller is only ever called from
+  trusted inputs is Low at best; one whose caller takes
+  attacker-controllable input is Critical/High.
 - `Hotspot: <file>:<line-range> — <name>` and `Why: <reason>`.
 - `Round: <N>` — informational; you don't need to act on it.
 - `Prior refuted hypotheses for this hotspot:` — a list of pairs

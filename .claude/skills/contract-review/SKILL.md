@@ -52,8 +52,10 @@ While stop conditions not met:
 
 1. **Pick** the hotspot with the fewest entries in `probed`
    (ties: order in the seed list).
-2. **Dispatch one `contract-audit` subagent** with `Hotspot:`,
-   `Why:`, `Round:`, and the `refuted[hotspot]` block.
+2. **Dispatch one `contract-audit` subagent** with the threat model
+   JSON, `Hotspot:`, `Why:`, `Round:`, and the `refuted[hotspot]`
+   block. The threat model informs reachability of the caller path
+   (untrusted-input-reachable → real severity; trusted-only → Low).
 3. **Parse the `<soundcheck-contract>` trailer.** Append every
    VERIFIED hypothesis to an in-memory `findings` list, **copying
    every field verbatim** (including `guards_traced` and any other
