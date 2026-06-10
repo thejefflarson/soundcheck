@@ -71,8 +71,8 @@ def main() -> int:
         f"max_rounds={args.rounds}; max_hours={args.max_hours}; "
         f"stagnation_limit={args.stagnation_limit}. Follow the skill's "
         f"Procedure exactly. Keep all state in conversation memory; "
-        f"do not write files. After the loop, render the findings table "
-        f"and the <soundcheck-contract-summary> trailer."
+        f"do not write files. After the loop, render the Markdown "
+        f"findings report exactly as the skill's Stage 3 specifies."
     )
 
     try:

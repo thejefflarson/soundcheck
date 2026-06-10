@@ -41,9 +41,9 @@ def parse_tagged_json(response: str, tag: str) -> list[dict]:
     """Parse a single <{tag}>[...]</{tag}> JSON-array block from response.
 
     Returns [] if the tag is absent or the payload doesn't parse as a list.
-    The orchestrators emit one such block per run (<soundcheck-findings> from
-    security-review, <soundcheck-contract> from contract-review) and any
-    benchmark or downstream consumer that reads either uses the same shape.
+    Used by the contract-review benchmark, which prompts the model for a
+    <soundcheck-contract> trailer that the skill itself no longer emits
+    by default.
     """
     pattern = rf"<{re.escape(tag)}>\s*(.*?)\s*</{re.escape(tag)}>"
     match = re.search(pattern, response, re.DOTALL)

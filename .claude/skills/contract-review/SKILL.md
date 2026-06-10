@@ -70,8 +70,7 @@ Stop conditions (in priority order):
 
 ### Stage 3 — Render
 
-**Primary output is a human Markdown report.** JSON blocks are a
-machine-readable trailer — NOT a substitute for prose. Emit in order:
+Output is a human-readable Markdown report. Emit in this order:
 
 1. `# Contract Review` heading.
 2. **Findings table** sorted by severity (Critical → Low):
@@ -83,36 +82,19 @@ machine-readable trailer — NOT a substitute for prose. Emit in order:
    summary as prose. This is what reviewers actually read.
 4. **Summary line:** `N findings across M hotspots, R rounds
    (stopped: <reason>).`
-5. **JSON trailer** in two tagged blocks (required even when empty):
 
-```
-<soundcheck-contract>
-[{"severity":"Critical|High|Medium|Low",
-  "impl":"<file>:<line>","caller":"<file>:<line>",
-  "gap":"<one-sentence divergence>",
-  "trigger":"<2–4 line attacker scenario>",
-  "guards_traced":[...],
-  "hotspot_key":"<key>","round":N}]
-</soundcheck-contract>
-
-<soundcheck-contract-summary>
-{"rounds":R,"verified":N,"hotspots_probed":M,
- "stopped":"max_rounds|max_hours|stagnation|exhausted"}
-</soundcheck-contract-summary>
-```
+No JSON trailer. Callers that need a machine-readable schema (the
+benchmark harness, custom CI scripts) append their own format
+requirement to the user prompt.
 
 ## Verification
 
-- [ ] Markdown findings table is rendered BEFORE the JSON blocks
-      (the prose is the primary output)
+- [ ] Markdown findings table is present (or the "No contract gaps
+      found" line when empty)
 - [ ] Per-finding details section is present (one heading per finding)
-- [ ] Every row in the findings table corresponds to one entry in
-      the `<soundcheck-contract>` JSON array
-- [ ] Every JSON entry has `severity`, `impl`, `caller`, `gap`,
-      `trigger`, `hotspot_key`, `round`
-- [ ] `<soundcheck-contract>` is always present, even when empty
-      (`[]`); same for `<soundcheck-contract-summary>`
-- [ ] No files written; output is the prose + two tagged blocks
+- [ ] Each row's severity, impl, caller, gap, trigger match the
+      details block below
+- [ ] No files written; output is prose only
 
 ## References
 
