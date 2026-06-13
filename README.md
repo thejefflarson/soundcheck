@@ -162,14 +162,14 @@ twice — once with Soundcheck loaded, once with a generic "be a security
 reviewer" prompt — and a judge model scores both against the checklist.
 *Full pass* means Claude satisfies every checklist item.
 
-Latest haiku sweep (v1.16):
+Latest haiku sweep (v1.16, 132 fixtures completed):
 
 | Model | With Soundcheck | Plain Claude | Lift |
 |---|---|---|---|
-| Haiku | **80%** full pass | 35% | +45 pts |
+| Haiku | **79%** full pass | 42% | +37 pts |
 
-When the two reviews disagree, plugin-loaded reviews score higher 74 of
-79 times (≥1 criterion). The mean per-fixture delta is +0.91 criteria.
+When the two reviews disagree, plugin-loaded reviews score higher 62 of
+73 times (≥1 criterion). The mean per-fixture delta is +0.77 criteria.
 
 Statistical detail: Wilcoxon signed-rank on per-fixture score
 differences, p < 1e-4 on haiku. Methodology in
