@@ -142,15 +142,36 @@ def ensure_fixture(fx: dict) -> Path:
 
 def run_contract_review(repo_dir: Path, system_prompt: str,
                         args: argparse.Namespace) -> str:
-    """Run contract-review against repo_dir and return raw stdout."""
+    """Run contract-review against repo_dir and return raw stdout.
+
+    The benchmark scores the run by parsing a <soundcheck-contract>
+    JSON trailer. The skill body itself no longer emits one (it's a
+    user-facing Markdown report); we ask for it explicitly here so the
+    benchmark is self-contained and not dependent on a convention the
+    skill once carried.
+    """
     user_prompt = (
         f"Run a Soundcheck /contract-review on this repository. "
         f"max_rounds={args.rounds}; max_hours={args.max_hours}; "
         f"stagnation_limit={args.stagnation_limit}. Follow the skill's "
         f"Procedure exactly. Keep all state in conversation memory; do "
-        f"not write files. After the loop, render the findings table "
-        f"and the <soundcheck-contract> + <soundcheck-contract-summary> "
-        f"trailers."
+        f"not write files.\n\n"
+        f"This is a benchmark run — after rendering the skill's normal "
+        f"Markdown report, ALSO append these two machine-readable JSON "
+        f"trailers verbatim (no code fences):\n\n"
+        f"<soundcheck-contract>\n"
+        f"[{{\"severity\":\"Critical|High|Medium|Low\","
+        f"\"impl\":\"<file>:<line>\",\"caller\":\"<file>:<line>\","
+        f"\"gap\":\"<one-sentence divergence>\","
+        f"\"trigger\":\"<2-4 line attacker scenario>\","
+        f"\"guards_traced\":[...],"
+        f"\"hotspot_key\":\"<key>\",\"round\":N}}]\n"
+        f"</soundcheck-contract>\n\n"
+        f"<soundcheck-contract-summary>\n"
+        f"{{\"rounds\":R,\"verified\":N,\"hotspots_probed\":M,"
+        f"\"stopped\":\"max_rounds|max_hours|stagnation|exhausted\"}}\n"
+        f"</soundcheck-contract-summary>\n\n"
+        f"Both blocks are required, even if findings is empty (`[]`)."
     )
     return run_claude(
         user_prompt,
