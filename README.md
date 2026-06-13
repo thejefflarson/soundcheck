@@ -3,9 +3,9 @@
 Automated security checks for Claude Code. 52 skills covering injection,
 authentication, cryptography, access control, LLM-specific threats, and
 more — drawn from OWASP, CWE, and real-world vulnerability patterns.
-When Claude writes vulnerable code, the matching skill fires, flags
-the issue, rewrites the offending block, and hands the turn back to
-Claude.
+When Claude is about to write vulnerable code, the matching skill
+auto-invokes, prompts Claude to flag the issue and rewrite it safely,
+and hands the turn back.
 
 ---
 
@@ -30,10 +30,11 @@ claude --plugin-dir /path/to/soundcheck
 ### Automatic reviews after each edit
 
 Soundcheck reviews every diff the moment Claude finishes writing it.
-When something looks risky, Claude reads the findings on the next turn
-and either fixes the code or pushes back — no manual `/security-review`,
-no PR comment cycle. You catch issues while the context is still fresh,
-not the next day.
+When something looks risky, the findings surface to Claude as a system
+reminder once Claude Code wakes the session — usually within a turn
+or two, sometimes longer if the review queue is backed up. From there
+Claude can fix the code, push back, or note the issue for you. The
+review happens in the background; you never block on it.
 
 A one-shot haiku triage decides whether the diff warrants a full
 review, so most turns cost ~$0.003. Only diffs that plausibly introduce
@@ -52,9 +53,9 @@ release, or a deep audit before shipping — reach for one of these:
 
 | Mode | When | Time | Cost | Catches |
 |---|---|---|---|---|
-| **`/pr-review`** | Every pull request, in CI | ≤1 min | a few cents | Critical/High OWASP in the diff |
-| **`/security-review`** | Nightly CI or monthly audit | ~20 min | ~$4 | All severities, whole repo, attack chains |
-| **`/contract-review`** | Pre-release or after big refactor | ~30 min | ~$10–20 | Bugs where a function does less than callers assume |
+| **`/pr-review`** | Every pull request, in CI | 1–2 min | a few cents | Critical/High OWASP in the diff |
+| **`/security-review`** | Nightly CI or monthly audit | ~10 min on haiku, ~25 min on sonnet | ~$4 on sonnet | All severities, whole repo, attack chains |
+| **`/contract-review`** | Pre-release or after big refactor | ~30 min | ~$15–20 per repo on opus | Bugs where a function does less than callers assume |
 
 Rule of thumb: gate every PR on `pr-review`, schedule `security-review`
 nightly or weekly, and add `contract-review` on a slower cadence once
@@ -153,7 +154,7 @@ Short answer: yes — with caveats per mode.
 
 ### Head-to-head against bare Claude (auto-invoking skills)
 
-We test against 130 deliberately broken fixtures — Flask login routes
+We test against 134 deliberately broken fixtures — Flask login routes
 with hardcoded passwords, SQL queries built from string concatenation,
 file uploads without size limits. Each fixture carries a checklist of
 what a thorough review should catch and fix. Claude reviews each fixture
@@ -161,17 +162,17 @@ twice — once with Soundcheck loaded, once with a generic "be a security
 reviewer" prompt — and a judge model scores both against the checklist.
 *Full pass* means Claude satisfies every checklist item.
 
+Latest haiku sweep (v1.16):
+
 | Model | With Soundcheck | Plain Claude | Lift |
 |---|---|---|---|
-| Haiku | **77%** full pass | 40% | +37 pts |
-| Sonnet | **90%** full pass | 58% | +32 pts |
+| Haiku | **80%** full pass | 35% | +45 pts |
 
-When the two reviews disagree, Soundcheck wins 6 of 7 times. The lift is
-similar across model tiers — loading the plugin raises baseline quality
-everywhere we tested.
+When the two reviews disagree, plugin-loaded reviews score higher 74 of
+79 times (≥1 criterion). The mean per-fixture delta is +0.91 criteria.
 
 Statistical detail: Wilcoxon signed-rank on per-fixture score
-differences, p < 1e-6 on haiku, p < 1e-4 on sonnet. Methodology in
+differences, p < 1e-4 on haiku. Methodology in
 [`docs/smoke-test-methodology.md`](docs/smoke-test-methodology.md).
 
 ### External validation
@@ -185,17 +186,19 @@ partially patched.
 
 ### Review times (full-repo pipeline)
 
-`scripts/benchmark-eval.py` against three open-source projects at pinned
-commits:
+`scripts/benchmark-eval.py` against four open-source projects at pinned
+commits. Times are for the `security-review` skill alone (the full
+threat-model + hotspots + security-review chain is roughly 2× longer):
 
-| Repo | Language | Haiku | Sonnet |
-|---|---|---|---|
-| [redash](https://github.com/getredash/redash) | Python | **6.1 min** | 17.3 min |
-| [cal.com](https://github.com/calcom/cal.com) | TypeScript | **8.7 min** | 25.7 min |
-| [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **5.7 min** | 14.7 min |
+| Repo | Language | Haiku |
+|---|---|---|
+| [redash](https://github.com/getredash/redash) | Python | **~4 min** |
+| [gitea](https://github.com/go-gitea/gitea) | Go | **~15 min** |
+| [cal.com](https://github.com/calcom/cal.com) | TypeScript | **~1.5 min** |
+| [vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust | **~11 min** |
 
-For very large monorepos (we ran haiku against gitea in 2 minutes
-diff-scoped), use the PR-scoped `--diff-base` flow.
+Sonnet is 2-3× the haiku time for the same repo with denser findings.
+For very large monorepos, use the PR-scoped `--diff-base` flow.
 
 In practice:
 

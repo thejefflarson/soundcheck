@@ -89,6 +89,29 @@ def require_on_main(repo: Path) -> None:
         raise ReleaseError(f"{repo} is on branch {branch!r}, not main")
 
 
+def require_prerelease_checks() -> None:
+    """Run scripts/prerelease-checks.py and reject on any failure.
+
+    Catches README drift (skill count, missing referenced scripts, broken
+    doc links) and inherited static-validation problems before the tag
+    push. Warnings are surfaced but don't block.
+    """
+    script = SOUNDCHECK_DIR / "scripts" / "prerelease-checks.py"
+    r = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True, text=True,
+    )
+    # Print stdout so warnings surface in the release plan output.
+    if r.stdout.strip():
+        print(r.stdout.rstrip())
+    if r.returncode != 0:
+        raise ReleaseError(
+            "Prerelease checks failed (see output above). Fix the "
+            "mismatches or run `python scripts/prerelease-checks.py` "
+            "directly to debug."
+        )
+
+
 def count_skills() -> int:
     return sum(1 for p in SKILLS_DIR.iterdir() if p.is_dir() and (p / "SKILL.md").exists())
 
@@ -247,6 +270,7 @@ def plan_and_apply(args: argparse.Namespace) -> int:
     require_on_main(action_dir)
     require_clean_tree(action_dir)
     require_valid_plugin_manifest()
+    require_prerelease_checks()
 
     skill_count = count_skills()
     action_tag = next_action_version(action_dir)
