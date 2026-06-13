@@ -1,52 +1,54 @@
 ---
 name: supply-chain
-description: Detects unpinned dependencies, unverified package installs, and missing
-  integrity checks in build pipelines. Use when writing package installation
-  commands, dependency manifests, CI/CD pipeline configs, build scripts, or
-  code that loads external packages. Also invoke when pinning or unpinning
-  dependency versions.
+description: Detects supply-chain risks in dependency manifests, lockfiles, install
+  commands, and CI pipelines — missing lockfiles, absent vulnerability scanners,
+  unverified installs, install hooks that pipe remote content to a shell, and
+  AI-hallucinated package names. Use when writing package install commands,
+  dependency manifests, CI/CD configs, build scripts, or code that loads
+  external packages.
 ---
 
 # Supply Chain Security Check (A03:2025)
 
 ## What this checks
 
-Protects against malicious or compromised packages introduced through unpinned
-dependencies, unverified installs, or absent integrity checks. A single poisoned
-transitive dependency can give attackers arbitrary code execution during build or
-runtime.
+Most exploited supply-chain incidents come from *not updating fast enough* (sitting
+on known-CVE versions) and from *unverified installs* (curl-to-shell, typosquats,
+install hooks). Aggressive exact-pinning is no longer the right default — it traps
+you on vulnerable releases. Lockfiles + scanners + auto-merge of patches is.
 
 ## Vulnerable patterns
 
-- Direct dependencies declared with floating ranges — `*`, `latest`, caret, tilde, open comparators, or unpinned git branches/tags — that silently pull in compromised releases
+- No lockfile committed alongside the manifest — builds aren't reproducible and you can't tell when a dependency moved
+- CI install command silently re-resolves instead of failing on lockfile drift (`npm install` vs `npm ci`, `pip install` vs `pip install --require-hashes`, `bundle install` vs `bundle install --frozen`)
+- No automated dependency-update bot, or one that doesn't auto-merge passing PRs — sitting on known-vulnerable versions
+- No vulnerability scanner in CI, or a scanner whose findings do not fail the build
+- Direct dependencies pinned to exact versions with no auto-update path — strands you on known-CVE releases
 - Installs from arbitrary git refs, tarball URLs, or local paths with no integrity guarantee
-- No lockfile committed, or CI install command that silently resolves fresh versions instead of failing on lockfile drift
-- CI with no vulnerability scanner, or a scanner whose findings do not fail the build
-- Install hooks, build scripts, or CI steps that pipe remote content into a shell
-- AI-generated manifests containing hallucinated package names that attackers can claim (slopsquatting)
+- Install hooks, build scripts, or CI steps that pipe remote content into a shell — `curl | bash`, `wget | sh`, `iwr | iex`
+- AI-generated manifests with hallucinated package names attackers can claim (slopsquatting)
 
 ## Fix immediately
 
-Flag the vulnerable code, explain the risk, and suggest a fix establishing these
-properties. Translate to the package manager and CI system of the audited file — use
-that ecosystem's documented lockfile, frozen-install command, and audit tool; do not
-import a recipe from a different ecosystem.
+Flag the issue, explain the risk, and suggest a fix. Translate to the package
+manager and CI system of the audited file.
 
-1. **Every direct dependency is pinned to an exact version.** No floating ranges, no unpinned git branches or tags. A floating range silently pulls in the next compromised release; an exact pin means a human decides when to move.
-2. **A lockfile is committed** that records resolved transitive versions with content hashes or equivalent integrity checksums. CI installs with a frozen-lockfile command that fails on drift, not a silent-resolve command.
-3. **A vulnerability scanner runs in CI and fails the build on high-severity findings.** Any tool that exits non-zero works. A scanner that reports but does not fail the build is advisory, not a gate.
-4. **No install hook, build script, or CI step pipes remote content into a shell.** Every instance replaces the whole supply chain with whatever the server decides to serve today.
-5. **AI-suggested or unrecognized package names are verified in the registry before install** — slopsquatted typosquats are a growing vector in AI-generated manifests.
+1. **Direct dependencies use a range that accepts patches and minors automatically** (npm caret, Python `~=`, Ruby `~>`, Cargo's default caret). Patches are nearly always security fixes; an exact pin means a CVE sits in your build until someone clicks "bump." Exact pins only for documented known-incompatibility cases.
+2. **A lockfile is committed** that records resolved transitive versions with content hashes. Reproducibility lives here, not in the manifest.
+3. **CI installs with a frozen-lockfile command** that fails on lockfile-manifest drift.
+4. **A dependency-update bot runs on a schedule** (Renovate, Dependabot), opens PRs for patches and minors, and auto-merges after tests + scanner pass. This is how patches reach production fast enough to matter.
+5. **A vulnerability scanner runs in CI and fails the build on high-severity findings.** Advisory-only scanners do not gate.
+6. **No install hook, build script, or CI step pipes remote content into a shell.**
+7. **AI-suggested or unrecognized package names are verified in the registry before install** — slopsquatted typosquats are a growing vector in AI-generated manifests.
 
 ## Verification
 
-Confirm the response:
-
-- [ ] Every direct dependency is pinned to an exact version — no `*`, `latest`, caret/tilde ranges, open comparators, or unpinned git branches/tags
-- [ ] A lockfile is committed that records resolved transitive versions with content hashes or equivalent integrity checksums
-- [ ] CI installs dependencies with a command that fails if the lockfile does not match — not a command that silently resolves fresh versions
-- [ ] A vulnerability scanner runs in CI and fails the build on high-severity findings (any tool with a non-zero exit code suffices)
-- [ ] No install hooks, build scripts, or CI steps pipe remote content into a shell (`curl | bash`, `wget | sh`, `iwr | iex`)
+- [ ] Direct dependencies use a range that auto-accepts patches and minors; exact pins only for documented known-incompatibility cases
+- [ ] A lockfile is committed with resolved transitive versions and content hashes
+- [ ] CI installs with a frozen-lockfile command that fails on drift
+- [ ] A dependency-update bot is configured and auto-merges patches and minors after tests and scanner pass
+- [ ] A vulnerability scanner runs in CI and fails the build on high-severity findings
+- [ ] No install hooks, build scripts, or CI steps pipe remote content into a shell
 - [ ] Any AI-generated or unrecognized package names are flagged for registry verification before install
 
 ## References
