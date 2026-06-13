@@ -11,10 +11,6 @@ on:
         description: "Print full Claude responses"
         type: boolean
         default: false
-      benchmark_limit:
-        description: "Max SecurityEval samples per skill (leave blank for all)"
-        required: false
-        default: ""
   schedule:
     # Every Monday at 09:00 UTC
     - cron: "0 9 * * 1"
@@ -68,48 +64,6 @@ jobs:
             echo
             echo '```'
             tail -20 /tmp/smoke-output.txt 2>/dev/null || echo "(no output)"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  securityeval-benchmark:
-    name: SecurityEval benchmark
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    # Run on weekly schedule and manual dispatch; skip the quarterly trigger
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1'
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: "20"
-
-      - name: Install claude CLI
-        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
-
-      - name: Run SecurityEval benchmark
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SKILL: ${{ github.event.inputs.skill }}
-          LIMIT: ${{ github.event.inputs.benchmark_limit }}
-        run: |
-          set -euo pipefail
-          args=()
-          if [ -n "${SKILL:-}" ]; then args+=(--skill "$SKILL"); fi
-          if [ -n "${LIMIT:-}" ]; then args+=(--limit "$LIMIT"); fi
-          python scripts/benchmark-securityeval.py "${args[@]}" 2>&1 | tee /tmp/benchmark-output.txt
-          exit "${PIPESTATUS[0]}"
-
-      - name: Summarize
-        if: always()
-        run: |
-          {
-            echo "## SecurityEval Benchmark"
-            echo
-            echo '```'
-            tail -20 /tmp/benchmark-output.txt 2>/dev/null || echo "(no output)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

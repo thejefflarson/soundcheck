@@ -192,7 +192,6 @@ To verify a skill works:
 - Static validator: `scripts/validate-skills.py`
 - Paired smoke test: `scripts/smoke-test-skills.py` (plugin vs bare arms, Wilcoxon signed-rank on per-criterion count)
 - Smoke methodology: `docs/smoke-test-methodology.md`
-- SecurityEval benchmark: `scripts/benchmark-securityeval.py`
 - Security review action script: `scripts/security-review-action.py`
 - Security review GitHub Action: https://github.com/thejefflarson/soundcheck-action
 

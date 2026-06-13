@@ -177,20 +177,11 @@ differences, p < 1e-6 on haiku, p < 1e-4 on sonnet. Methodology in
 ### External validation
 
 Our own fixtures could bias the result toward patterns we had in mind.
-Two independent checks:
-
-- **[SecurityEval](https://github.com/s2e-lab/SecurityEval)** — 104
-  vulnerable Python samples published by academic researchers with
-  ground-truth CWE labels. Both arms hit **100% detection and 100% fix**
-  here. The snippets are obvious enough that bare Claude already catches
-  everything, so this benchmark doesn't discriminate further — but it
-  confirms Soundcheck doesn't break anything on code it wasn't designed
-  against.
-- **Real OWASP projects** — 13 vulnerable files pinned from OWASP Juice
-  Shop (TypeScript) and OWASP PyGoat (Python). Soundcheck caught all 13
-  and fully fixed **12 of 13 (92%)**. The one miss — open-redirect in
-  Juice Shop's `redirect.ts` — Soundcheck flagged but only partially
-  patched.
+Independent check on **real OWASP projects** — 13 vulnerable files pinned
+from OWASP Juice Shop (TypeScript) and OWASP PyGoat (Python). Soundcheck
+caught all 13 and fully fixed **12 of 13 (92%)**. The one miss —
+open-redirect in Juice Shop's `redirect.ts` — Soundcheck flagged but only
+partially patched.
 
 ### Review times (full-repo pipeline)
 
@@ -212,9 +203,9 @@ In practice:
   1-2 minutes.
 - **Sonnet handles nightly or monthly deep scans** — higher-quality
   findings, but 3-4× the per-call time.
-- **Soundcheck adds no latency over bare Claude.** On the SecurityEval
-  paired run, plugin-loaded reviews ran *faster* than bare (15.2s median
-  vs 17.7s) — the focused skill prompt converges sooner.
+- **Soundcheck adds no latency over bare Claude.** Across paired
+  smoke-test runs, plugin-loaded reviews run slightly *faster* than bare
+  — the focused skill prompt converges sooner.
 
 ### Where it's weakest
 
@@ -235,7 +226,6 @@ Two honest caveats:
 
 Reproduce any of this with:
 - `python scripts/smoke-test-skills.py` — paired, ~2h on haiku
-- `python scripts/benchmark-securityeval.py --with-bare`
 - `python scripts/benchmark-realworld.py`
 - `python scripts/benchmark-contract-review.py` — ~$60, ~2h
 
