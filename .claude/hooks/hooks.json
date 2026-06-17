@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CLAUDE_PROJECT_DIR=\"${CLAUDE_PROJECT_DIR}\" python \"${CLAUDE_PLUGIN_ROOT}/scripts/record-touched-path.py\""
+            "command": "CLAUDE_PROJECT_DIR=\"${CLAUDE_PROJECT_DIR}\" python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/record-touched-path.py\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CLAUDE_PROJECT_DIR=\"${CLAUDE_PROJECT_DIR}\" python \"${CLAUDE_PLUGIN_ROOT}/scripts/auto-review.py\"",
+            "command": "CLAUDE_PROJECT_DIR=\"${CLAUDE_PROJECT_DIR}\" python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/auto-review.py\"",
             "asyncRewake": true
           }
         ]
