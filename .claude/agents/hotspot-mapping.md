@@ -50,31 +50,58 @@ exclusions on your own.
 
 ## What to do
 
-1. **Enumerate source files.** Glob across the repo using
-   language-appropriate extensions: Python
-   `.py`; TypeScript/JavaScript `.ts/.tsx/.js/.jsx/.mjs`; Go `.go`;
-   Java/Kotlin `.java/.kt`; Ruby `.rb`; Rust `.rs`; C/C++/C#
-   `.c/.cpp/.cc/.h/.hpp/.cs`; config `.yml/.yaml/.toml`,
-   `Dockerfile`, `.github/workflows/*`. Drop the skip list above.
+1. **Enumerate broadly.** Glob for every layer of the codebase, not
+   just backend business logic:
+
+   - **Code**, in whichever languages the repo uses — server, client,
+     tooling, migrations, hooks. Common extensions include
+     `.py .rb .go .rs .java .kt .swift .php .ex .exs .scala .dart .c
+     .cpp .cc .h .hpp .cs .ts .tsx .js .jsx .mjs .cjs`.
+   - **Views, templates, and markup** — `.html .htm .vue .svelte
+     .astro .hbs .erb .ejs .jinja .tmpl .liquid`, and equivalents.
+   - **Manifests, lockfiles, config, and infra** — `.yml .yaml .toml
+     .json .lock .env`, `Dockerfile`, CI workflows, IaC files,
+     `Makefile`, `Brewfile`, and equivalents.
+
+   Don't skip a file just because its extension isn't listed — if
+   it's obviously source or config for a language or tool present
+   in this repo, include it. Drop only the skip list above.
 
 2. **Identify interesting locations.** A hotspot is a function (or
    small region) where the threat model's untrusted inputs meet
    code that could plausibly mishandle them, OR a public entry
-   point that callers outside this repo can reach. Rules of thumb:
+   point that callers outside this repo can reach, OR a site where
+   trusted state crosses back to the outside world. Rules of thumb:
 
-   - A function constructing a SQL/shell/template string from
+   - A function constructing a query, command, or template from
      external input
-   - A request handler, route, or webhook receiver
-   - A serialization / deserialization call on untrusted bytes
+   - A handler, route, message consumer, or subscription that
+     receives requests from outside this codebase
+   - A serialization or deserialization call on untrusted bytes
    - File or network operations whose path/URL is influenced by
      external input
-   - Authentication, session, cookie, or token logic
+   - Authentication, session, identity, cookie, or token logic —
+     wherever it runs
    - Cryptographic primitive call sites
    - LLM prompt construction or tool-use definitions
    - Any predicate, validator, or "is-this-known" helper called
      from multiple sites — contract gaps often live in these
-   - Public API entry points: syscalls, exported library symbols,
-     HTTP/RPC handlers, CLI subcommands, message-queue consumers
+   - **A rendering or output site where trusted state is written
+     into an outward-facing surface** — response bodies, HTML/text
+     templates, DOM sinks, log lines, external messages,
+     serialization to third-party formats. Escaping and
+     encoding bugs live here.
+   - **A guard, gate, or validation that runs on only one side of
+     a trust boundary** — client-side-only checks, one-tier-only
+     validation, decorators applied inconsistently across sibling
+     endpoints. The unguarded side is the hotspot.
+   - **A dependency or configuration artifact that resolves
+     external code or gates trust** — package manifests, lockfiles,
+     CI/CD workflows, IaC, plugin/extension configs, feature-flag
+     stores. External code executes from here at build or runtime.
+   - Public entry points of any shape the codebase exposes:
+     library exports, subcommands, background workers, event
+     listeners, IPC endpoints
 
 3. **Don't try to also be the reviewer.** Your job is locating
    suspicious surfaces; the per-hotspot review subagent decides
@@ -108,18 +135,28 @@ interesting locations; don't invent hotspots to pad.
 
 **`category`** is one of:
 
-- `TRUST BOUNDARIES` — route/endpoint/CLI handlers, file-upload
-  endpoints, WebSocket/SSE handlers, IPC listeners
-- `AUTH & SESSIONS` — login/logout, signup, password reset, JWT
-  creation/validation, OAuth callbacks, API key checks
+- `TRUST BOUNDARIES` — request handlers, upload endpoints,
+  streaming/WebSocket handlers, IPC or message-queue listeners,
+  any surface that ingests data from outside the codebase
+- `AUTH & SESSIONS` — login/logout, signup, password reset, token
+  minting and validation, OAuth flows, API key or credential checks
 - `ACCESS CONTROL` — role/permission checks, object-level lookups
-  by ID, admin-only paths
-- `DATA LAYER` — SQL/ORM queries, deserialization, file read/write
-  with dynamic paths
+  by ID, admin-only paths, guards or middleware that gate access
+- `DATA LAYER` — queries, deserialization, file read/write with
+  dynamic paths, cache/index writes
 - `CRYPTO & SECRETS` — encrypt/decrypt, hashing, key generation,
-  TLS config, secret loading from env/vault/config
-- `EXTERNAL CALLS` — HTTP clients, LLM API calls, email/SMS/payment,
-  cloud SDK usage
+  transport-security config, secret loading from environment or
+  vault
+- `EXTERNAL CALLS` — outbound HTTP, LLM APIs, mail/SMS/payment,
+  cloud SDK calls, third-party service integrations
+- `RENDERING & OUTPUT` — sites where trusted state is written to
+  an outward-facing surface: response body construction, HTML/text
+  templates, DOM sinks, log emission with mixed-trust content,
+  serialization to external formats
+- `DEPENDENCIES & CONFIG` — package manifests, lockfiles, CI/CD
+  workflow definitions, IaC, plugin/extension configs, feature-flag
+  stores — anything that resolves external code or gates trust at
+  build or runtime
 
 **`priority`** is one of `Critical`, `High`, `Medium`:
 
@@ -131,26 +168,36 @@ interesting locations; don't invent hotspots to pad.
 
 ## Worked example
 
-For a Python Flask app with an LLM chatbot, a file-upload endpoint,
-and OAuth login:
+The example uses abstract paths so it doesn't anchor you on any
+particular language, framework, or layer. Real hotspot output must
+of course use real paths from the repo you are auditing.
 
 ```json
 [
-  {"file": "src/api/handlers/users.py", "lines": "42-58", "name": "search",
+  {"file": "handlers/search", "lines": "42-58", "name": "search",
    "category": "DATA LAYER", "priority": "Critical",
-   "why": "concatenates request.args['q'] into a raw SQL LIKE clause"},
-  {"file": "src/chat/handler.py", "lines": "85-110", "name": "build_prompt",
+   "why": "concatenates an external query parameter into a query string sent to the data store; no parameter binding visible"},
+  {"file": "handlers/chat", "lines": "85-110", "name": "build_prompt",
    "category": "TRUST BOUNDARIES", "priority": "Critical",
-   "why": "interpolates request.json['message'] into the system prompt without delimiters"},
-  {"file": "src/api/handlers/attachments.py", "lines": "12-40", "name": "save_attachment",
-   "category": "DATA LAYER", "priority": "High",
-   "why": "writes uploads using user-supplied filename, no extension allowlist or size cap"},
-  {"file": "src/auth/oauth.py", "lines": "60-72", "name": "callback",
+   "why": "interpolates external message content into an LLM system prompt with no delimiters or role separation"},
+  {"file": "handlers/uploads", "lines": "12-40", "name": "save_upload",
+   "category": "TRUST BOUNDARIES", "priority": "High",
+   "why": "writes uploads using an external filename; no extension allowlist or size cap in the request path"},
+  {"file": "auth/oauth-callback", "lines": "60-72", "name": "handle_callback",
    "category": "AUTH & SESSIONS", "priority": "Critical",
-   "why": "reads redirect_uri from OAuth response without validating against the registered callback list"},
-  {"file": "src/auth/session.py", "lines": "8-18", "name": "set_session_cookie",
+   "why": "reads redirect target from the OAuth response without checking it against the registered callback list"},
+  {"file": "auth/session", "lines": "8-18", "name": "set_session_cookie",
    "category": "AUTH & SESSIONS", "priority": "Critical",
-   "why": "sets the session cookie without HttpOnly or Secure flags"}
+   "why": "sets the session cookie without host-side hardening flags (http-only, same-site, secure)"},
+  {"file": "views/product-detail", "lines": "22-35", "name": "render_description",
+   "category": "RENDERING & OUTPUT", "priority": "High",
+   "why": "writes server-returned product description into a DOM sink with no explicit escape/sanitize step"},
+  {"file": "routes/admin-shell", "lines": "5-18", "name": "admin_guard",
+   "category": "ACCESS CONTROL", "priority": "High",
+   "why": "client-side guard checks a local flag; the underlying admin endpoint appears to lack a matching server-side check"},
+  {"file": "manifests/dependencies", "lines": "1-1", "name": "dependency_list",
+   "category": "DEPENDENCIES & CONFIG", "priority": "Medium",
+   "why": "manifest pins auth-critical libraries via loose version ranges and floats an infra image tag — surface for supply-chain and typosquat review"}
 ]
 ```
 

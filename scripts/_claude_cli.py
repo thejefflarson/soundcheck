@@ -26,7 +26,7 @@ from pathlib import Path
 
 MIN_TIMEOUT_SEC = 30
 MAX_TIMEOUT_SEC = 1800
-MAX_BUDGET_CAP_USD = 20.0
+MAX_BUDGET_CAP_USD = 40.0
 
 SEVERITY_ORDER = ("Critical", "High", "Medium", "Low")
 

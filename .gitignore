@@ -26,4 +26,5 @@ venv/
 *.swo
 .securityeval-cache/
 .realworld-cache/
+.juiceshop-benchmark/
 .claude/scheduled_tasks.lock

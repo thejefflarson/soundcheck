@@ -58,7 +58,7 @@ jobs:
           node-version: "20"
 
       - name: Install claude CLI
-        run: npm install -g '@anthropic-ai/claude-code@2.1.159'
+        run: npm install -g '@anthropic-ai/claude-code@2.1.214'
 
       - name: Run auto-review E2E
         env:

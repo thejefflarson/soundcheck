@@ -39,7 +39,7 @@ jobs:
           node-version: "20"
 
       - name: Install claude CLI
-        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
+        run: npm install -g '@anthropic-ai/claude-code@2.1.214'
 
       - name: Run smoke tests
         env:
@@ -85,7 +85,7 @@ jobs:
           node-version: "20"
 
       - name: Install claude CLI
-        run: npm install -g '@anthropic-ai/claude-code@2.1.108'
+        run: npm install -g '@anthropic-ai/claude-code@2.1.214'
 
       - name: Draft quarterly threat review
         id: draft
