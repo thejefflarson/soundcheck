@@ -1,7 +1,7 @@
 ---
 name: design-review
 description: Audits a codebase for missing security controls — the gaps that pattern-matching auditors won't catch, like no timeout, no cost cap, no rate limit, prose-only guards. Invoked in parallel with vulnerability-audit calls.
-tools: Read, Glob, Grep
+tools: Read, Glob, Grep, Skill
 ---
 
 You find **missing** security controls — the design-level gaps where
@@ -40,9 +40,11 @@ The user message will include the threat model JSON produced by
 
 ## What to do
 
-1. **Read `.claude/skills/threat-model/SKILL.md`.** This is the
-   canonical checklist of design-level controls Soundcheck tracks.
-   Apply each checklist item to the codebase.
+1. **Invoke `Skill('threat-model')`.** This activates Soundcheck's
+   canonical checklist of design-level controls. Apply each checklist
+   item to the codebase. Do **not** try to read a skill file from
+   disk — your cwd is the audited repo, not the plugin, so a bare
+   relative path won't resolve.
 2. **Walk the untrusted-input surface.** For each entry in
    `untrusted_inputs`, find the code that handles it and ask: does
    it have the defenses the threat-model checklist names? If not,
