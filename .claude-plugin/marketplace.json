@@ -7,12 +7,12 @@
     {
       "name": "soundcheck",
       "description": "52 security skills covering OWASP Web Top 10:2025, LLM Top 10:2025, API Security Top 10:2023, and systems-software bug classes (memory-API misuse, crypto-library wiring, privilege handling, concurrency, numeric trust-boundary), plus three review modes (PR gate, full scan, contract review). Auto-invokes on vulnerable code and rewrites it inline.",
-      "version": "1.17.1",
+      "version": "1.17.2",
       "license": "MIT",
       "source": {
         "source": "github",
         "repo": "thejefflarson/soundcheck",
-        "ref": "v1.17.1"
+        "ref": "v1.17.2"
       }
     }
   ]
