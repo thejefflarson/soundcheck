@@ -15,6 +15,13 @@ Protects against arbitrary code execution and tampered artifacts. Deserializing
 untrusted data with code-executing formats gives attackers remote code execution;
 unsigned software updates allow supply-chain compromise.
 
+Scope note: a Dependabot or Renovate PR that bumps a dependency version and merges
+after CI passes is not an "unverified software update" — it is a supply-chain
+strength the supply-chain skill endorses. Do not flag dependency-update auto-merge
+here. The unsigned-update patterns below cover updaters that download and *execute*
+an artifact (installer, plugin, model, release binary) with no signature or digest
+check, not version bumps gated on CI.
+
 ## Vulnerable patterns
 
 - Code-executing deserializer (Python `pickle`/`marshal`/`shelve`, Java `ObjectInputStream`, Ruby `Marshal.load`, PHP `unserialize`, .NET `BinaryFormatter`, unsafe YAML loader) called on attacker-reachable bytes

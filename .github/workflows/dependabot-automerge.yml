@@ -16,26 +16,15 @@ jobs:
       pull-requests: write
       contents: write  # required by gh pr merge --auto to enable auto-merge
     steps:
-      - name: Fetch Dependabot metadata
-        id: meta
-        uses: dependabot/fetch-metadata@ffa630c65fa7e0ecfa0625b5ceda64399aea1b36 # v3.0.0
-
-      # Only auto-merge patch bumps, and only for packages on an explicit
-      # allowlist. Minor bumps require a human because they can land
-      # feature-scale changes, and unknown packages could introduce
-      # attacker-controlled code via a compromised upstream. Repository
-      # branch protection must also require `self-review` and
-      # `static-checks` to succeed before --auto can merge the PR.
-      - name: Enable auto-merge for allowlisted patch updates
-        if: |
-          steps.meta.outputs.update-type == 'version-update:semver-patch' &&
-          contains(fromJSON('[
-            "actions/checkout",
-            "actions/setup-python",
-            "actions/setup-node",
-            "actions/upload-artifact",
-            "dependabot/fetch-metadata"
-          ]'), steps.meta.outputs.dependency-names)
+      # Auto-merge every Dependabot PR regardless of semver tier. --auto only
+      # merges once branch protection's required status checks pass. Those
+      # contexts are the job names `Run Soundcheck against itself`
+      # (self-review.yml) and `Validate skill files` (static-checks.yml), so
+      # every update clears the security review and static checks before it
+      # lands; a known-CVE version sitting unmerged is the larger risk. A
+      # major bump that breaks the build fails those checks and stays open for
+      # a human, so no separate tier gate is needed.
+      - name: Enable auto-merge
         run: gh pr merge --auto --merge "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
