@@ -17,6 +17,11 @@ on known-CVE versions) and from *unverified installs* (curl-to-shell, typosquats
 install hooks). Aggressive exact-pinning is no longer the right default — it traps
 you on vulnerable releases. Lockfiles + scanners + auto-merge of patches is.
 
+Auto-merging dependency-update PRs (Dependabot, Renovate) that clear CI — tests plus
+a vulnerability scanner — is the recommended posture for patch and minor bumps, not a
+finding. Do not report it as a risk. The reportable condition is the *absence* of that
+automation, which leaves known-CVE versions sitting unmerged.
+
 ## Vulnerable patterns
 
 - No lockfile committed alongside the manifest — builds aren't reproducible and you can't tell when a dependency moved

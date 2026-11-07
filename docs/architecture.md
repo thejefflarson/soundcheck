@@ -125,5 +125,5 @@ scripts/
   self-review.yml          Soundcheck-on-Soundcheck CI gate
   skill-smoke-tests.yml    Weekly smoke tests + quarterly threat radar
   static-checks.yml        Skill file validation on push
-  dependabot-automerge.yml Dependency updates (patch/minor only)
+  dependabot-automerge.yml Dependency updates (all tiers, gated on CI checks)
 ```
