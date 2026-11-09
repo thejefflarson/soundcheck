@@ -218,12 +218,14 @@ notes stay manual (`gh release create ...`) so they can be hand-written.
 ## Lockstep with soundcheck-action
 
 `thejefflarson/soundcheck-action` (sibling repo, usually at `../soundcheck-action`) pins a
-specific soundcheck commit SHA in `action.yml` and hardcodes the path to
-`.claude/skills/security-review/SKILL.md`. Any soundcheck change that moves skill files,
-renames the `security-review` skill, alters its sibling-skill discovery (the action does
-`skills_dir = skill_path.parent.parent`), or changes the structured-output tags the
-review script parses (`<soundcheck-rewrite>`, `<soundcheck-findings>`) requires a
-matching commit + tag in soundcheck-action.
+specific soundcheck commit SHA in `action.yml`. It passes no `--skill-path`, so the review
+script auto-selects by mode: the `pr-review` skill for diff-scoped PR/push runs and the
+`security-review` skill for full-repo scans (both resolved from the pinned checkout via
+`SCRIPT_DIR`). Any soundcheck change that moves skill files, renames the `pr-review` or
+`security-review` skills, alters the script's plugin-dir derivation (`plugin_dir =
+skill_path.parent.parent.parent.parent`), or changes the structured-output tags the review
+script parses (`<soundcheck-rewrite>`, `<soundcheck-findings>`) requires a matching commit +
+tag in soundcheck-action.
 
 ## Nominating a Threat
 
