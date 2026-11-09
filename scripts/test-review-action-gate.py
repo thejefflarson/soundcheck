@@ -4,7 +4,8 @@
 The gate decides whether a changed-file set is inert documentation/images
 (skip, no model call) or contains anything reviewable (run). It is a
 deny-list by design, so unknown/extensionless files and scriptable or
-manifest files (.svg, .txt) must NOT be treated as doc-only.
+manifest files (.svg, .txt, .mdx) must NOT be treated as doc-only.
+.mdx embeds and executes JSX at build time, so it is code.
 
 Usage:
     python scripts/test-review-action-gate.py
@@ -32,6 +33,8 @@ CASES: list[tuple[list[str], bool]] = [
     (["README.md", "src/app.py"], False),         # any code -> review
     (["requirements.txt"], False),                # .txt manifest -> review
     (["icon.svg"], False),                        # svg can carry script
+    (["page.mdx"], False),                        # mdx executes JSX -> review
+    (["README.md", "page.mdx"], False),           # one mdx taints the set
     (["Dockerfile"], False),                      # extensionless -> review
     (["Makefile", "README.md"], False),
     (["config.yaml"], False),
