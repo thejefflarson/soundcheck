@@ -75,6 +75,30 @@ def get_changed_files(repo_dir: Path, diff_base: str) -> list[str]:
     return [f for f in result.stdout.strip().split("\n") if f]
 
 
+# Extensions that cannot carry a code or supply-chain vulnerability, so a
+# change touching only these is skipped before any model call. This is a
+# deny-list, the inverse of auto-review.py's code allow-list: the published
+# gate errs toward reviewing, so an unknown or extensionless file
+# (Dockerfile, Makefile, requirements.txt, a bare script) still gets
+# reviewed. .svg and .txt are deliberately absent — SVG can carry script,
+# and .txt covers requirements.txt and other manifests.
+DOC_ONLY_EXT = {
+    ".md", ".markdown", ".mdx", ".rst", ".adoc",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
+}
+
+
+def is_doc_only(files: list[str]) -> bool:
+    """True when every path is an inert documentation or raster-image file.
+
+    An empty list is not doc-only; callers handle "nothing changed"
+    separately so the two outcomes stay distinguishable.
+    """
+    return bool(files) and all(
+        Path(f).suffix.lower() in DOC_ONLY_EXT for f in files
+    )
+
+
 # Pipe, bracket, angle, and block-level chars get escaped. Backslash is
 # doubled FIRST so a subsequent escape doesn't produce '\\|' (which GFM
 # reads as literal-backslash + unescaped-pipe and breaks out of the cell).
@@ -303,6 +327,9 @@ def main() -> int:
         if not changed:
             print("No files to review.")
             return 0
+        if is_doc_only(changed):
+            print("Only documentation/image files changed; skipping review.")
+            return 0
         safe_changed = [re.sub(r"[^\w./\-]", "_", f) for f in changed]
         file_list = "\n".join(f"- `{f}`" for f in safe_changed)
         user_prompt = (
@@ -321,6 +348,9 @@ def main() -> int:
         changed = get_changed_files(repo_dir, args.diff_base)
         if not changed:
             print("No changed files. Nothing to review.")
+            return 0
+        if is_doc_only(changed):
+            print("Only documentation/image files changed; skipping review.")
             return 0
         # Sanitize filenames to prevent prompt injection via crafted paths
         safe_changed = [re.sub(r"[^\w./\-]", "_", f) for f in changed]
