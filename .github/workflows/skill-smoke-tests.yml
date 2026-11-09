@@ -12,9 +12,10 @@ on:
         type: boolean
         default: false
   schedule:
-    # Every Monday at 09:00 UTC
-    - cron: "0 9 * * 1"
-    # First Monday of Jan/Apr/Jul/Oct at 10:00 UTC — triggers quarterly threat review
+    # First Monday of Jan/Apr/Jul/Oct at 10:00 UTC. The ~2.2h haiku smoke run
+    # is metered API spend, so it runs quarterly, not weekly; use
+    # workflow_dispatch for an on-demand run. This cron also triggers the
+    # quarterly threat review.
     - cron: "0 10 1-7 1,4,7,10 1"
 
 permissions:

@@ -1,11 +1,7 @@
 name: Security Review
 on:
   pull_request:
-  push:
-    branches: [main, master]
   workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * 1"
 
 jobs:
   review:
