@@ -23,17 +23,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
-      # Check out the PR HEAD to the default workspace for the review.
+      # Check out the PR HEAD to the default workspace — this is the review
+      # target (untrusted). persist-credentials: false keeps the GITHUB_TOKEN
+      # out of .git/config, which the reviewer (Read access) would otherwise
+      # be able to read out of the workspace.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      # Check out the base branch to a sibling directory. The reviewer's
-      # SKILL.md is loaded from here, not from the PR checkout, so a PR
-      # that edits .claude/skills/security-review/SKILL.md cannot override
-      # the reviewer's system prompt and flip the gate.
+      # Check out the base branch to a sibling directory. Both the reviewer's
+      # SKILL.md and the gate *driver* (scripts/) are loaded from here, not
+      # from the PR checkout, so a PR that edits either cannot override the
+      # reviewer's system prompt or make the driver exit 0.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: .soundcheck-trusted-skills
+          persist-credentials: false
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
@@ -44,17 +50,28 @@ jobs:
       - name: Install claude CLI
         run: npm install -g '@anthropic-ai/claude-code@2.1.319'
 
+      # Make origin/$BASE_REF resolvable in the PR workspace so the diff
+      # computes. Without it the diff fails and the gate — now fail-closed —
+      # exits 2 instead of silently passing as "no changed files".
+      - name: Fetch base ref for the diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
       - name: Run security review (read-only)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          # Resolve the skill path to an absolute, trusted location (base
-          # branch of this repo) so the PR checkout cannot override it.
-          TRUSTED_SKILL="$(pwd)/.soundcheck-trusted-skills/.claude/skills/security-review/SKILL.md"
-          python scripts/security-review-action.py \
+          # Run both the skill and the driver from the trusted base checkout
+          # so a PR cannot edit scripts/security-review-action.py to exit 0
+          # or print the key. --repo-dir . is still the (untrusted) PR HEAD.
+          TRUSTED="$(pwd)/.soundcheck-trusted-skills"
+          python "$TRUSTED/scripts/security-review-action.py" \
             --repo-dir . \
-            --skill-path "$TRUSTED_SKILL" \
+            --skill-path "$TRUSTED/.claude/skills/security-review/SKILL.md" \
             --diff-base "origin/$BASE_REF" \
             --output-summary /tmp/self-review-summary.md \
             --audit-log /tmp/self-review-audit.json

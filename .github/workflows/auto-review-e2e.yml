@@ -7,9 +7,13 @@ name: Auto-Review E2E
 #
 # Triggers:
 #   - workflow_dispatch (manual)
-#   - PR / push to main only when files actually in the hook driver
-#     surface change. Skips routine docs/skills churn so we don't burn
-#     ~$0.05 + ~5 minutes on every commit.
+#   - push to main only when files in the hook driver surface change.
+#
+# Deliberately NOT on pull_request: this job runs PR-authored test code
+# (scripts/test-auto-review-e2e.py, itself in the trigger paths) with
+# ANTHROPIC_API_KEY in its environment, so a PR could edit that code to
+# exfiltrate the key before review. Running only on push-to-main means the
+# secret-bearing job never executes PR-controlled code pre-merge.
 on:
   workflow_dispatch:
     inputs:
@@ -21,13 +25,6 @@ on:
         description: "Single case to run (A/B/C/D), leave blank for all"
         required: false
         default: ""
-  pull_request:
-    paths:
-      - "scripts/auto-review.py"
-      - "scripts/security-review-action.py"
-      - "scripts/test-auto-review-e2e.py"
-      - ".claude/hooks/hooks.json"
-      - ".github/workflows/auto-review-e2e.yml"
   push:
     branches: ["main"]
     paths:
@@ -79,7 +76,7 @@ jobs:
           {
             echo "## Auto-Review E2E"
             echo
-            echo "Model: \`claude-haiku-4-5\` (default)"
+            echo "Model: \`haiku\` → \`claude-haiku-5-5\` (default)"
             echo "Cases: \`${{ github.event.inputs.case || 'A,B,C,D' }}\`"
             echo
             echo '```'
