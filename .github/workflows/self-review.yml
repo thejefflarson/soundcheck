@@ -68,10 +68,13 @@ jobs:
           # Run both the skill and the driver from the trusted base checkout
           # so a PR cannot edit scripts/security-review-action.py to exit 0
           # or print the key. --repo-dir . is still the (untrusted) PR HEAD.
+          # Diff-scoped run → the pr-review skill (mode 1: single-pass,
+          # Critical/High, no subagents). The full security-review skill
+          # expects the Agent tool, which diff mode does not grant.
           TRUSTED="$(pwd)/.soundcheck-trusted-skills"
           python "$TRUSTED/scripts/security-review-action.py" \
             --repo-dir . \
-            --skill-path "$TRUSTED/.claude/skills/security-review/SKILL.md" \
+            --skill-path "$TRUSTED/.claude/skills/pr-review/SKILL.md" \
             --diff-base "origin/$BASE_REF" \
             --output-summary /tmp/self-review-summary.md \
             --audit-log /tmp/self-review-audit.json
