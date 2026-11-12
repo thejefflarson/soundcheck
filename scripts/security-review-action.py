@@ -105,15 +105,31 @@ DOC_ONLY_EXT = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
 }
 
+# Markdown that is agent instructions, not inert prose: it steers an LLM's
+# behavior, so a change to it must always be reviewed even though its
+# extension is .md. SKILL.md files are Soundcheck's own reviewer system
+# prompts — a skill-only PR is exactly the gate-flip threat the self-review
+# guards against, so it must not skip on the doc-only fast path.
+AGENT_INSTRUCTION_NAMES = {"claude.md", "agents.md", "skill.md"}
+
+
+def _is_agent_instruction(path: str) -> bool:
+    p = Path(path)
+    return p.name.casefold() in AGENT_INSTRUCTION_NAMES or ".claude" in p.parts
+
 
 def is_doc_only(files: list[str]) -> bool:
     """True when every path is an inert documentation or raster-image file.
 
     An empty list is not doc-only; callers handle "nothing changed"
-    separately so the two outcomes stay distinguishable.
+    separately so the two outcomes stay distinguishable. Agent-instruction
+    Markdown (CLAUDE.md, AGENTS.md, SKILL.md, anything under .claude/) is
+    never inert — it drives model behavior, so it always reaches the review.
     """
-    return bool(files) and all(
-        Path(f).suffix.lower() in DOC_ONLY_EXT for f in files
+    return (
+        bool(files)
+        and not any(_is_agent_instruction(f) for f in files)
+        and all(Path(f).suffix.lower() in DOC_ONLY_EXT for f in files)
     )
 
 

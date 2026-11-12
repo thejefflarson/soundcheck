@@ -50,6 +50,11 @@ DOC_ONLY_CASES: list[tuple[list[str], bool]] = [
     (["Makefile", "README.md"], False),
     (["config.yaml"], False),
     ([".github/workflows/ci.yml"], False),
+    (["CLAUDE.md"], False),                       # agent instructions -> review
+    (["AGENTS.md"], False),
+    ([".claude/skills/injection/SKILL.md"], False),  # reviewer's own prompt
+    ([".claude/hooks/notes.md"], False),          # anything under .claude/
+    (["docs/guide.md", "CLAUDE.md"], False),      # one instruction file taints
 ]
 
 # (severity, expected_blocking) — fail closed on anything not clearly non-blocking.
