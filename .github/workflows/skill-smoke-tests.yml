@@ -12,9 +12,10 @@ on:
         type: boolean
         default: false
   schedule:
-    # Every Monday at 09:00 UTC
-    - cron: "0 9 * * 1"
-    # First Monday of Jan/Apr/Jul/Oct at 10:00 UTC — triggers quarterly threat review
+    # First Monday of Jan/Apr/Jul/Oct at 10:00 UTC. The ~2.2h haiku smoke run
+    # is metered API spend, so it runs quarterly, not weekly; use
+    # workflow_dispatch for an on-demand run. This cron also triggers the
+    # quarterly threat review.
     - cron: "0 10 1-7 1,4,7,10 1"
 
 permissions:
@@ -39,7 +40,7 @@ jobs:
           node-version: "20"
 
       - name: Install claude CLI
-        run: npm install -g '@anthropic-ai/claude-code@2.1.214'
+        run: npm install -g '@anthropic-ai/claude-code@2.1.319'
 
       - name: Run smoke tests
         env:
@@ -85,7 +86,7 @@ jobs:
           node-version: "20"
 
       - name: Install claude CLI
-        run: npm install -g '@anthropic-ai/claude-code@2.1.214'
+        run: npm install -g '@anthropic-ai/claude-code@2.1.319'
 
       - name: Draft quarterly threat review
         id: draft

@@ -80,10 +80,11 @@ def get_changed_files(repo_dir: Path, diff_base: str) -> list[str]:
 # deny-list, the inverse of auto-review.py's code allow-list: the published
 # gate errs toward reviewing, so an unknown or extensionless file
 # (Dockerfile, Makefile, requirements.txt, a bare script) still gets
-# reviewed. .svg and .txt are deliberately absent — SVG can carry script,
-# and .txt covers requirements.txt and other manifests.
+# reviewed. .svg, .txt, and .mdx are deliberately absent — SVG can carry
+# script, .txt covers requirements.txt and other manifests, and .mdx embeds
+# and executes JSX at build time, so it is code, not inert documentation.
 DOC_ONLY_EXT = {
-    ".md", ".markdown", ".mdx", ".rst", ".adoc",
+    ".md", ".markdown", ".rst", ".adoc",
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
 }
 
