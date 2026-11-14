@@ -49,29 +49,46 @@ DEFAULT_TIMEOUT = 600
 DEFAULT_MAX_BUDGET_USD = 5.0
 GIT_DIFF_TIMEOUT = 60        # pathological histories shouldn't stall CI
 
+# Below this changed-file count, zero findings is treated as a genuinely
+# clean small diff; at or above it, zero findings is treated as a possible
+# prompt-injection bypass and routed to manual review. A crude size proxy:
+# raising it misses large-diff bypasses, lowering it fails clean small PRs.
+EMPTY_FINDINGS_MIN_FILES = 3
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+class DiffError(RuntimeError):
+    """Raised when the diff cannot be computed (bad ref, timeout, git error).
+
+    Distinct from a successful diff that is empty: a failure here must fail
+    the gate closed (exit 2), never pass as "nothing to review". A gate that
+    returns "no changed files" when it simply failed to compute the diff is a
+    silent fail-open — the review never runs and the PR goes green.
+    """
+
+
 def get_changed_files(repo_dir: Path, diff_base: str) -> list[str]:
+    """Return changed paths for ``diff_base``, or raise ``DiffError``.
+
+    A possibly-empty list is returned only when git succeeded; the caller may
+    treat that as a genuinely clean diff. Every failure mode raises instead,
+    so the caller cannot confuse "failed to diff" with "nothing changed".
+    """
     if not re.fullmatch(r"[A-Za-z0-9_./@:^~\-]+", diff_base):
-        print(f"ERROR: invalid git ref: {diff_base!r}", file=sys.stderr)
-        return []
+        raise DiffError(f"invalid git ref: {diff_base!r}")
     try:
         result = subprocess.run(
             ["git", "diff", "--name-only", "--diff-filter=ACMR", diff_base],
             capture_output=True, text=True, cwd=repo_dir,
             timeout=GIT_DIFF_TIMEOUT,
         )
-    except subprocess.TimeoutExpired:
-        print(f"WARNING: git diff timed out after {GIT_DIFF_TIMEOUT}s",
-              file=sys.stderr)
-        return []
+    except subprocess.TimeoutExpired as exc:
+        raise DiffError(f"git diff timed out after {GIT_DIFF_TIMEOUT}s") from exc
     if result.returncode != 0:
-        print(f"WARNING: git diff failed: {result.stderr.strip()}",
-              file=sys.stderr)
-        return []
+        raise DiffError(f"git diff failed: {result.stderr.strip()}")
     return [f for f in result.stdout.strip().split("\n") if f]
 
 
@@ -88,15 +105,31 @@ DOC_ONLY_EXT = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
 }
 
+# Markdown that is agent instructions, not inert prose: it steers an LLM's
+# behavior, so a change to it must always be reviewed even though its
+# extension is .md. SKILL.md files are Soundcheck's own reviewer system
+# prompts — a skill-only PR is exactly the gate-flip threat the self-review
+# guards against, so it must not skip on the doc-only fast path.
+AGENT_INSTRUCTION_NAMES = {"claude.md", "agents.md", "skill.md"}
+
+
+def _is_agent_instruction(path: str) -> bool:
+    p = Path(path)
+    return p.name.casefold() in AGENT_INSTRUCTION_NAMES or ".claude" in p.parts
+
 
 def is_doc_only(files: list[str]) -> bool:
     """True when every path is an inert documentation or raster-image file.
 
     An empty list is not doc-only; callers handle "nothing changed"
-    separately so the two outcomes stay distinguishable.
+    separately so the two outcomes stay distinguishable. Agent-instruction
+    Markdown (CLAUDE.md, AGENTS.md, SKILL.md, anything under .claude/) is
+    never inert — it drives model behavior, so it always reaches the review.
     """
-    return bool(files) and all(
-        Path(f).suffix.lower() in DOC_ONLY_EXT for f in files
+    return (
+        bool(files)
+        and not any(_is_agent_instruction(f) for f in files)
+        and all(Path(f).suffix.lower() in DOC_ONLY_EXT for f in files)
     )
 
 
@@ -129,6 +162,18 @@ def _severity_rank(sev: object) -> int:
         return SEVERITY_ORDER.index(sev)
     except ValueError:
         return len(SEVERITY_ORDER)
+
+
+def _is_blocking_severity(raw: object) -> bool:
+    """True when a finding's severity should block the gate.
+
+    Normalizes case and surrounding space, so ``"high"`` and ``"Critical "``
+    count the same as ``"High"`` / ``"Critical"``. Fails closed: any value
+    that is not a recognized non-blocking severity (Medium/Low) blocks —
+    including empty, misspelled, or novel severities a hijacked reviewer
+    might emit to slip a finding past an exact-match comparison.
+    """
+    return str(raw or "").strip().casefold() not in ("medium", "low")
 
 
 class MissingFindingsBlock(Exception):
@@ -346,7 +391,13 @@ def main() -> int:
         mode = f"file list ({len(changed)} files)"
         allowed_tools = "Read,Grep,Glob"
     elif args.diff_base:
-        changed = get_changed_files(repo_dir, args.diff_base)
+        try:
+            changed = get_changed_files(repo_dir, args.diff_base)
+        except DiffError as exc:
+            print(f"ERROR: could not compute diff vs {args.diff_base!r}: "
+                  f"{exc}. Failing closed (exit 2) — the review did not run.",
+                  file=sys.stderr)
+            return 2
         if not changed:
             print("No changed files. Nothing to review.")
             return 0
@@ -441,14 +492,15 @@ def main() -> int:
                          skill_hash, "parse-failure", [], 0, None)
         return 2
 
-    critical_high = [
-        f for f in findings if f.get("severity") in ("Critical", "High")
-    ]
-    print(f"Findings: {len(findings)} ({len(critical_high)} Critical/High)")
+    blocking = [f for f in findings if _is_blocking_severity(f.get("severity"))]
+    print(f"Findings: {len(findings)} ({len(blocking)} blocking)")
 
     # Empty findings on a non-trivial diff is a classic prompt-injection
-    # bypass — route it to a manual-review exit code instead of green.
-    if not findings and args.diff_base and len(changed) >= 3:
+    # bypass — route it to a manual-review exit code instead of green. This
+    # applies to both scoped modes (--diff-base and --files); full-repo has
+    # its own semantics and is excluded.
+    reviewed_scoped = bool(args.diff_base or args.files)
+    if not findings and reviewed_scoped and len(changed) >= EMPTY_FINDINGS_MIN_FILES:
         print("WARNING: reviewer returned zero findings on a non-trivial "
               "diff; exiting 2 (manual review required) rather than 0.",
               file=sys.stderr)
@@ -546,9 +598,9 @@ def main() -> int:
                 print(f"WARNING: autofix failed: {exc}", file=sys.stderr)
 
     _write_audit_log(args, started_iso, run_started, skill_path,
-                     skill_hash, "ok", findings, len(critical_high),
+                     skill_hash, "ok", findings, len(blocking),
                      autofix_files)
-    return 1 if critical_high else 0
+    return 1 if blocking else 0
 
 
 def _write_summary(path: str | None, summary: str) -> str:
